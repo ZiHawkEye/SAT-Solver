@@ -82,7 +82,6 @@ def parse_formula(lines, n_vars):
                     raise FileFormatError("Exceeded number of variables specified.")
                 
                 clause.add(Variable(variable, UNASSIGNED)) # variable is an integer, with a negative integer denoting a negation of the variable
-        
         except ValueError as e:
             print("Error, variable should be a nonzero number.")
             

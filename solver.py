@@ -36,7 +36,7 @@ class Solver:
             self.decision_level += 1 
             self.assign_variable(variable, value, self.decision_level)
             formula = self.unit_propagation(formula)
-
+            
             if (formula.value() == UNSAT):
                 formula, stage = self.conflict_analysis(formula) # conflict analysis to learn new clause and level to backtrack to
 
@@ -46,7 +46,7 @@ class Solver:
                     formula = self.backtrack(formula, stage)
                     self.decision_level = stage
 
-        return Variable.get_assignments(), SAT
+        return Variable.get_assignments(), formula.value()
 
     def all_variables_assigned(self):
         return self.unassigned == set()
@@ -72,7 +72,7 @@ class Solver:
                 break
                     
             # if all other variables in the clause have value 0, then the last variable must have value 1
-            value = 1 if unit_variable.variable > 0 else 0
+            value = 0 if unit_variable.is_negated else 1
             self.assign_variable(unit_variable.variable, value, self.decision_level, antecedent)
             
             # remove all other clauses containing the variable

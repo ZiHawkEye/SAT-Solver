@@ -15,7 +15,10 @@ class Solver:
         # records assignment
         if self.decision_level not in self.assigned_vars:
             self.assigned_vars[decision_level] = set()
-            
+        
+        if variable in self.unassigned: # TODO: check if this is legal
+            self.unassigned.remove(variable)
+
         self.assigned_vars[decision_level].add(variable)
         Variable(variable, value, antecedent, decision_level)
 
@@ -29,9 +32,9 @@ class Solver:
         while not self.all_variables_assigned():
             # picks the variable and value to assign
             variable, value = self.pick_branching_variable() 
-            self.assign_variable(variable, value, self.decision_level)
             # increments decision level after choosing a variable
             self.decision_level += 1 
+            self.assign_variable(variable, value, self.decision_level)
             formula = self.unit_propagation(formula)
 
             if (formula.value() == UNSAT):
@@ -50,6 +53,7 @@ class Solver:
 
     def pick_branching_variable(self):
         variable = self.unassigned.pop()
+        self.unassigned.add(variable)
         return variable, 0
 
     def unit_propagation(self, formula):
@@ -59,18 +63,17 @@ class Solver:
             antecedent = None # antecedent is the unit clause where the rule is applied
             
             for clause in formula.clauses:
-                if clause.is_unit_clause():
+                if clause.get_unit_variable() != None:
+                    unit_variable = clause.get_unit_variable()
                     antecedent = clause
                     break
 
             if antecedent == None:
                 break
-
-            unit_variable = [variable for variable in antecedent.variables if variable.value() != 0].pop()
-
+                    
             # if all other variables in the clause have value 0, then the last variable must have value 1
             value = 1 if unit_variable.variable > 0 else 0
-            self.assign_variable(unit_variable.variable, value, antecedent, self.decision_level)
+            self.assign_variable(unit_variable.variable, value, self.decision_level, antecedent)
             
             # remove all other clauses containing the variable
             # add to removed clauses
@@ -80,21 +83,21 @@ class Solver:
             clauses = { clause for clause in formula.clauses if unit_variable not in clause }
 
             # remove all negations of the variable in all other clauses
-            negation = Variable(-unit_variable.variable)
+            negation = unit_variable.negation()
 
             remove_literal = lambda variable, clause : (clause 
                     if variable not in clause 
                     else Clause({var for var in clause.variables if var != variable }))
             
-            clauses = { remove_literal(negation, clause) for clause in formula.clauses }
+            clauses = { remove_literal(negation, clause) for clause in clauses }
             formula = Formula(clauses)
 
         return formula
 
     def resolution(self, clause1, clause2):
         # removes all complementary pairs of variables in the 2 clauses
-        resolved_clause = { variable for variable in clause1.variables if Variable(-variable.variable) not in clause2 }
-        resolved_clause |= { variable for variable in clause2.variables if Variable(-variable.variable) not in clause1 }
+        resolved_clause = { variable for variable in clause1.variables if variable.negation() not in clause2 }
+        resolved_clause |= { variable for variable in clause2.variables if variable.negation() not in clause1 }
         return Clause(resolved_clause)
 
     def conflict_analysis(self, formula):
@@ -130,8 +133,8 @@ class Solver:
 
         # appends learnt clause to formula
         new_formula = formula.clauses.union({ learnt_clause }) 
-        # backtracks to the highest decision level of the learnt clause
-        stage = max({ variable.get_decision_level() for variable in learnt_clause.variables })
+        # backtracks to the shallowest decision level of the learnt clause
+        stage = min({ variable.get_decision_level() for variable in learnt_clause.variables })
         return Formula(new_formula), stage
 
     def backtrack(self, formula, stage):

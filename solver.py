@@ -1,7 +1,6 @@
 """
 Defines SAT solver.
 """
-import copy
 from notation import *
 
 class Solver:
@@ -12,15 +11,18 @@ class Solver:
         self.decision_level = 0
 
     def assign_variable(self, variable, value, decision_level, antecedent=None):
+        print("assign {} = {} @ {} with antecedent {}".format(variable, value, decision_level, str(antecedent)))
+        
         # records assignment
         if self.decision_level not in self.assigned_vars:
             self.assigned_vars[decision_level] = set()
         
-        if variable in self.unassigned: # TODO: check if this is legal
+        if variable in self.unassigned: # reassignment is legal
             self.unassigned.remove(variable)
-
-        self.assigned_vars[decision_level].add(variable)
-        Variable(variable, value, antecedent, decision_level)
+            self.assigned_vars[decision_level].add(variable)
+            Variable(variable, value, antecedent, decision_level)
+            
+        print("assignments: " + str(Variable.get_assignments()))
 
     def cdcl(self, formula):
         """
@@ -36,7 +38,7 @@ class Solver:
             self.decision_level += 1 
             self.assign_variable(variable, value, self.decision_level)
             formula = self.unit_propagation(formula)
-            
+
             if (formula.value() == UNSAT):
                 formula, stage = self.conflict_analysis(formula) # conflict analysis to learn new clause and level to backtrack to
 
@@ -44,6 +46,7 @@ class Solver:
                     return {}, UNSAT
                 else:
                     formula = self.backtrack(formula, stage)
+                    print("new formula: " + str(formula))
                     self.decision_level = stage
 
         return Variable.get_assignments(), formula.value()
@@ -57,8 +60,13 @@ class Solver:
         return variable, 0
 
     def unit_propagation(self, formula):
-        # applies unit propagation rules until there are no more unit clauses
+        # applies unit propagation rules until there are no more unit clauses, or if a conflict is identified
         while True:
+            # checks if there is a conflict
+            if formula.value() == UNSAT:
+                print("conflict")
+                return formula
+
             # find the first unit clause
             antecedent = None # antecedent is the unit clause where the rule is applied
             
@@ -70,7 +78,7 @@ class Solver:
 
             if antecedent == None:
                 break
-                    
+
             # if all other variables in the clause have value 0, then the last variable must have value 1
             value = 0 if unit_variable.is_negated else 1
             self.assign_variable(unit_variable.variable, value, self.decision_level, antecedent)
@@ -132,15 +140,18 @@ class Solver:
             learnt_clause = self.resolution(learnt_clause, target_variable.get_antecedent())
 
         # appends learnt clause to formula
-        new_formula = formula.clauses.union({ learnt_clause }) 
+        formula = Formula(formula.clauses.union({ learnt_clause })) 
         # backtracks to the shallowest decision level of the learnt clause
         stage = min({ variable.get_decision_level() for variable in learnt_clause.variables })
-        return Formula(new_formula), stage
+        print("learnt clause: " + str(learnt_clause))
+        return formula, stage - 1
 
     def backtrack(self, formula, stage):
+        print("backtracking to level " + str(stage))
         clauses = set().union(formula.clauses)
-        for i in range(stage, self.decision_level):
+        for i in range(stage, self.decision_level + 1):
             # adds to unassigned variables
+            variables = set()
             if i in self.assigned_vars:
                 variables = self.assigned_vars[i]
                 self.unassigned |= variables

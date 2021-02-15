@@ -7,7 +7,6 @@ from constants import *
 class Formula:
     def __init__(self, clauses):
         self.clauses = frozenset(clauses)
-        self.val = None
     
     def __str__(self):
         formula_string = ", ".join([str(clause) for clause in self.clauses])
@@ -17,13 +16,7 @@ class Formula:
         return isinstance(other, Formula) and self.clauses == other.clauses
 
     def value(self):
-        # lazy eval
-        if self.val != None: 
-            return self.val
-
-        val = min({ clause.value() for clause in self.clauses }, default=1) # only possible due to total order on assignments
-        self.val = val
-        return self.val
+        return min({ clause.value() for clause in self.clauses }, default=1) # only possible due to total order on assignments
 
     def __contains__(self, clause):
         return clause in self.clauses
@@ -31,8 +24,6 @@ class Formula:
 class Clause:
     def __init__(self, variables):
         self.variables = frozenset(variables)
-        self.val = None
-        self.unit_variable = None
     
     def __str__(self):
         return "(" + ", ".join([str(variable) for variable in self.variables]) + ")"
@@ -44,25 +35,16 @@ class Clause:
         return isinstance(other, Clause) and self.variables == other.variables
 
     def value(self):
-        # lazy eval
-        if self.val != None:
-            return self.val
-
-        self.val = max({ variable.value() for variable in self.variables }, default=0) # only possible due to total order on assignments
-        return self.val
+        return max({ variable.value() for variable in self.variables }, default=0) # only possible due to total order on assignments
 
     def get_unit_variable(self):
         # returns unit variable iff all variables except 1 are assigned 0, else return 0
-        # lazy eval
-        if self.unit_variable != None:
-            return self.unit_variable
-        
         false_count = len([variable for variable in self.variables if variable.value() == 0])
 
         if (len(self.variables) - false_count) == 1:
-            self.unit_variable = [variable for variable in self.variables if variable.value() != 0].pop()
+            return [variable for variable in self.variables if variable.value() != 0].pop()
         
-        return self.unit_variable
+        return None
 
     def __contains__(self, variable):
         return variable in self.variables

@@ -4,7 +4,7 @@ import os
 import copy
 
 def main():
-    path = "./sat_test_case.cnf"
+    path = "./unsat_test_case.cnf"
     
     with open(os.path.join(os.getcwd(), path)) as f:
         test_case = f.read()

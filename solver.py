@@ -29,7 +29,6 @@ class Solver:
         """
         Implements CDCL algorithm.
             :param formula: SAT formula.
-            :param unassigned: stack of unassigned values.
             :returns: truth assignment that satisfies the formula
         """
         while not self.all_variables_assigned():
@@ -65,7 +64,11 @@ class Solver:
         return variable, 0
 
     def unit_propagation(self, formula):
-        # applies unit propagation rules until there are no more unit clauses, or if a conflict is identified
+        """
+        Applies unit propagation rules until there are no more unit clauses, or if a conflict is identified.
+            :param formula: SAT formula.
+            :returns: Modified SAT formula after applying unit clause rule.
+        """
         while True:
             # checks if there is a conflict
             if formula.value() == UNSAT:
@@ -110,8 +113,11 @@ class Solver:
         return Clause(resolved_clause)
 
     def conflict_analysis(self, formula):
-        # "backtracks" via resolution until the initial assignments leading to the conflict have been learnt
-
+        """
+        "Backtracks" in the implication graph via resolution until the initial assignments leading to the conflict have been learnt.
+            :param formula: SAT formula.
+            :returns: Learnt clause, stage to backtrack to.
+        """
         # predicate: returns the first variable in the clause at the current decision level that has an antecedent
         # else returns None
         def pred(clause):
@@ -134,10 +140,10 @@ class Solver:
             if (is_uip(learnt_clause)):
                 break
 
-            target_variable = pred(learnt_clause) # finds the variables to "backtrack"
+            target_variable = pred(learnt_clause) # finds the variables to "backtrack" in the implication graph
             if target_variable == None:
-                # UNSAT if no variable available in learnt clause for backtracking (TODO: confirm)
-                return formula, -1
+                # UNSAT if no variable available in learnt clause for "backtracking" in the implication graph (TODO: confirm)
+                return learnt_clause, -1
 
             learnt_clause = self.resolution(learnt_clause, target_variable.get_antecedent())
 
@@ -147,6 +153,11 @@ class Solver:
         return learnt_clause, stage - 1
 
     def backtrack(self, stage):
+        """
+        Backtracks to the chosen decision level.
+            :param stage: Chosen decision level.
+            :returns: Restored formula at the given decision level.
+        """
         print("backtracking to level " + str(stage))
 
         for i in range(stage, self.decision_level + 1):

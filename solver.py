@@ -30,16 +30,19 @@ class Solver:
             :returns: truth assignment that satisfies the formula
         """
         formula = self.unit_propagation(formula)
-
+        
+        if formula.value() == UNSAT:
+            return {}, UNSAT
+            
         while not self.all_variables_assigned():
             # picks the variable and value to assign
             variable, value = self.pick_branching_variable() 
             # increments decision level after choosing a variable
             self.decision_level += 1 
             self.assign_variable(variable, value, self.decision_level)
-            # stores formula before unit propagation
-            self.backtracking[self.decision_level] = copy.deepcopy(formula)
             formula = self.unit_propagation(formula)
+            # stores formula after unit propagation
+            self.backtracking[self.decision_level] = copy.deepcopy(formula)
 
             if (formula.value() == UNSAT):
                 learnt_clause, stage = self.conflict_analysis(formula) # conflict analysis to learn new clause and level to backtrack to
@@ -48,10 +51,13 @@ class Solver:
                 if stage < 0:
                     return {}, UNSAT
                 else:
-                    # backtracks to the start of the decision level and adds learnt clause
+                    # backtracks to the decision level and adds learnt clause, then proceeds with unit propagation
                     formula = self.backtrack(stage).union(Formula({ learnt_clause }))
                     print("new formula: " + str(formula))
                     print("assignments: " + str(Variable.get_assignments()))
+                    formula = self.unit_propagation(formula)
+                    # stores formula after unit propagation
+                    self.backtracking[self.decision_level] = copy.deepcopy(formula)
                     self.decision_level = stage
 
         return Variable.get_assignments(), formula.value()
@@ -149,8 +155,10 @@ class Solver:
 
             learnt_clause = self.resolution(learnt_clause, target_variable.get_antecedent())
 
-        # backtracks to the shallowest decision level of the learnt clause
-        stage = min({ variable.get_decision_level() for variable in learnt_clause.variables })
+        # backtracking heuristic - highest decision level other than the uip variable
+        stage = max({ variable.get_decision_level() for variable in learnt_clause.variables 
+                if variable.get_decision_level() != self.decision_level}, 
+                default=0)
         return learnt_clause, stage
 
     def backtrack(self, stage):
@@ -160,8 +168,8 @@ class Solver:
             :returns: Restored formula at the given decision level.
         """
         print("backtracking to level " + str(stage))
-
-        for i in range(stage, self.decision_level + 1):
+        # removes changes after chosen decision level
+        for i in range(stage + 1, self.decision_level + 1):
             # adds to unassigned variables
             variables = set()
 
@@ -175,7 +183,7 @@ class Solver:
             for variable in variables:
                 # sets value in variables to unassigned
                 # note: antecedent and decision level are not set to None
-                Variable(variable, UNASSIGNED) # TODO: ugly
+                Variable(variable, UNASSIGNED)
 
         # restores formula to the chosen level
         formula = self.backtracking[stage]

@@ -21,6 +21,10 @@ class Formula:
     def __contains__(self, clause):
         return clause in self.clauses
 
+    def union(self, formula):
+        clauses = self.clauses.union(formula.clauses)
+        return Formula(clauses)
+
 class Clause:
     def __init__(self, variables):
         self.variables = frozenset(variables)
@@ -38,7 +42,7 @@ class Clause:
         return max({ variable.value() for variable in self.variables }, default=0) # only possible due to total order on assignments
 
     def get_unit_variable(self):
-        # returns unit variable iff all variables except 1 are assigned 0, else return 0
+        # returns unit variable iff all variables except 1 are assigned 0, else return None
         false_count = len([variable for variable in self.variables if variable.value() == 0])
 
         if (len(self.variables) - false_count) == 1:
@@ -82,7 +86,6 @@ class Variable:
 
     def value(self):
         value = Variable.assignments[self.variable]
-        
         return value if not self.is_negated else 1 - value
 
     def get_antecedent(self):
@@ -93,6 +96,8 @@ class Variable:
     
     def negation(self):
         variable = Variable(self.variable)
+
         if not self.is_negated:
             variable.is_negated = True
+        
         return variable

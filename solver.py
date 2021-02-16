@@ -2,10 +2,11 @@
 Defines SAT solver.
 """
 from notation import *
+import copy
 
 class Solver:
     def __init__(self, formula, n_vars):
-        self.removed_clauses = {} # { decision_level: { removed_clause } }
+        self.backtracking = {} # { decision_level: formula }
         self.assigned_vars = {} # { decision_level: { variable } }
         self.unassigned = { i for i in range(1, n_vars + 1) }
         self.decision_level = 0
@@ -22,7 +23,7 @@ class Solver:
             self.assigned_vars[decision_level].add(variable)
             Variable(variable, value, antecedent, decision_level)
             
-        print("assignments: " + str(Variable.get_assignments()))
+        # print("assignments: " + str(Variable.get_assignments()))
 
     def cdcl(self, formula):
         """
@@ -37,16 +38,20 @@ class Solver:
             # increments decision level after choosing a variable
             self.decision_level += 1 
             self.assign_variable(variable, value, self.decision_level)
+            # stores formula before unit propagation
+            self.backtracking[self.decision_level] = copy.deepcopy(formula)
             formula = self.unit_propagation(formula)
 
             if (formula.value() == UNSAT):
-                formula, stage = self.conflict_analysis(formula) # conflict analysis to learn new clause and level to backtrack to
+                learnt_clause, stage = self.conflict_analysis(formula) # conflict analysis to learn new clause and level to backtrack to
 
                 if stage < 0:
                     return {}, UNSAT
                 else:
-                    formula = self.backtrack(formula, stage)
+                    # backtracks to the start of the decision level and adds learnt clause
+                    formula = self.backtrack(stage).union(Formula({ learnt_clause }))
                     print("new formula: " + str(formula))
+                    print("assignments: " + str(Variable.get_assignments()))
                     self.decision_level = stage
 
         return Variable.get_assignments(), formula.value()
@@ -83,11 +88,7 @@ class Solver:
             value = 0 if unit_variable.is_negated else 1
             self.assign_variable(unit_variable.variable, value, self.decision_level, antecedent)
             
-            # remove all other clauses containing the variable
-            # add to removed clauses
-            if self.decision_level not in self.removed_clauses:
-                self.removed_clauses[self.decision_level] = set()
-            self.removed_clauses[self.decision_level] |= { clause for clause in formula.clauses if unit_variable in clause }
+            # remove all other clauses containing the variable                
             clauses = { clause for clause in formula.clauses if unit_variable not in clause }
 
             # remove all negations of the variable in all other clauses
@@ -117,6 +118,7 @@ class Solver:
             for variable in clause.variables:
                 if variable.get_antecedent() != None and variable.get_decision_level() == self.decision_level:
                     return variable
+
             return None
 
         # there is a unique implication point at the current decision level that only has 1 variable assigned in the clause
@@ -134,36 +136,35 @@ class Solver:
 
             target_variable = pred(learnt_clause) # finds the variables to "backtrack"
             if target_variable == None:
-                # TODO: check if no more backtracking possible in implication graph?
+                # UNSAT if no variable available in learnt clause for backtracking (TODO: confirm)
                 return formula, -1
 
             learnt_clause = self.resolution(learnt_clause, target_variable.get_antecedent())
 
-        # appends learnt clause to formula
-        formula = Formula(formula.clauses.union({ learnt_clause })) 
         # backtracks to the shallowest decision level of the learnt clause
         stage = min({ variable.get_decision_level() for variable in learnt_clause.variables })
         print("learnt clause: " + str(learnt_clause))
-        return formula, stage - 1
+        return learnt_clause, stage - 1
 
-    def backtrack(self, formula, stage):
+    def backtrack(self, stage):
         print("backtracking to level " + str(stage))
-        clauses = set().union(formula.clauses)
+
         for i in range(stage, self.decision_level + 1):
             # adds to unassigned variables
             variables = set()
+
             if i in self.assigned_vars:
                 variables = self.assigned_vars[i]
                 self.unassigned |= variables
+            
             # removes assigned vars prior to chosen level
             self.assigned_vars[i] = set()
-            # adds the removed clauses at each decision level
-            if i in self.removed_clauses:
-                clauses |= self.removed_clauses[i]
-            self.removed_clauses[i] = set()
+            
             for variable in variables:
                 # sets value in variables to unassigned
                 # note: antecedent and decision level are not set to None
                 Variable(variable, UNASSIGNED) # TODO: ugly
 
-        return Formula(clauses)
+        # restores formula to the chosen level
+        formula = self.backtracking[stage + 1]
+        return formula

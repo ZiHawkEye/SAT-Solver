@@ -23,14 +23,14 @@ class Solver:
             self.assigned_vars[decision_level].add(variable)
             Variable(variable, value, antecedent, decision_level)
             
-        # print("assignments: " + str(Variable.get_assignments()))
-
     def cdcl(self, formula):
         """
         Implements CDCL algorithm.
             :param formula: SAT formula.
             :returns: truth assignment that satisfies the formula
         """
+        formula = self.unit_propagation(formula)
+
         while not self.all_variables_assigned():
             # picks the variable and value to assign
             variable, value = self.pick_branching_variable() 
@@ -43,6 +43,7 @@ class Solver:
 
             if (formula.value() == UNSAT):
                 learnt_clause, stage = self.conflict_analysis(formula) # conflict analysis to learn new clause and level to backtrack to
+                print("learnt clause: {}, stage: {}".format(str(learnt_clause), str(stage)))
 
                 if stage < 0:
                     return {}, UNSAT
@@ -68,7 +69,7 @@ class Solver:
         Applies unit propagation rules until there are no more unit clauses, or if a conflict is identified.
             :param formula: SAT formula.
             :returns: Modified SAT formula after applying unit clause rule.
-        """
+        """        
         while True:
             # checks if there is a conflict
             if formula.value() == UNSAT:
@@ -103,6 +104,7 @@ class Solver:
             
             clauses = { remove_literal(negation, clause) for clause in clauses }
             formula = Formula(clauses)
+            print("new formula: " + str(formula))
 
         return formula
 
@@ -143,14 +145,13 @@ class Solver:
             target_variable = pred(learnt_clause) # finds the variables to "backtrack" in the implication graph
             if target_variable == None:
                 # UNSAT if no variable available in learnt clause for "backtracking" in the implication graph (TODO: confirm)
-                return learnt_clause, -1
+                return Clause(set()), -1
 
             learnt_clause = self.resolution(learnt_clause, target_variable.get_antecedent())
 
         # backtracks to the shallowest decision level of the learnt clause
         stage = min({ variable.get_decision_level() for variable in learnt_clause.variables })
-        print("learnt clause: " + str(learnt_clause))
-        return learnt_clause, stage - 1
+        return learnt_clause, stage
 
     def backtrack(self, stage):
         """
@@ -177,5 +178,5 @@ class Solver:
                 Variable(variable, UNASSIGNED) # TODO: ugly
 
         # restores formula to the chosen level
-        formula = self.backtracking[stage + 1]
+        formula = self.backtracking[stage]
         return formula

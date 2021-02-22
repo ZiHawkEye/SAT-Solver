@@ -26,6 +26,8 @@ class Formula(object):
     def get_unit_clause_literal(self, assignment):
         unit_clause = None
         literal = None
+        if self.evaluate(assignment) == ENUM.CONFLICT:
+            return unit_clause, literal
         for clause in self.clauses:
             literal_list = list(clause.literals)
             statuses = [literal.evaluate(assignment) for literal in literal_list]

@@ -45,23 +45,23 @@ class Solver:
 
     def cdcl_solve(self):
         trail = []  # Additional stack to keep track of assignments and implication graph
-        assignment = {i: ENUM.UNDECIDED for i in range(1, self.n_literals + 1)} # Initially all unassigned
+        assignment = {i: ENUM.UNDECIDED for i in range(1, self.n_literals + 1)}  # Initially all unassigned
         while True:
             assignment, trail = self.unit_propagate(self.formula, assignment, trail)
             if self.formula.evaluate(assignment) == ENUM.UNSAT:
                 if self.decision_level == 0:
                     return assignment, ENUM.UNSAT
                 conflict_clause = self.conflict_analysis(self.formula, assignment, trail)
-                self.backtrack(conflict_clause, assignment, trail) # Undo assignments
+                self.backtrack(conflict_clause, assignment, trail)  # Undo assignments
                 self.formula.clauses.add(conflict_clause)
 
             else:
                 if len(trail) == self.n_literals:
                     return assignment, ENUM.SAT
                 self.decision_level += 1
-                literal, value = self.pick_branch(self.formula, assignment) # Pick a literal and assign it a value
-                trail.append((literal, value, None)) # Literal, Assigned Value and Antecedent Clause
-                assignment[literal] = value # update assignment
+                literal, value = self.pick_branch(self.formula, assignment)  # Pick a literal and assign it a value
+                trail.append((literal, value, None))  # Literal, Assigned Value and Antecedent Clause
+                assignment[literal] = value  # update assignment
 
     def get_next_unassigned_literal(self, assignment):
         for literal, value in assignment.items():
@@ -80,10 +80,10 @@ class Solver:
         while literal is not None:
             # update assignment
             if literal.is_negated:
-                assignment[literal.literal] = 0 # Assign 0 to negated literal
+                assignment[literal.literal] = 0  # Assign 0 to negated literal
                 trail.append((literal.literal, 0, unit_clause))
             else:
-                assignment[literal.literal] = 1 # Assign 1 to literal
+                assignment[literal.literal] = 1  # Assign 1 to literal
                 trail.append((literal.literal, 1, unit_clause))
             unit_clause, literal = formula.get_unit_clause_literal(assignment)
         return assignment, trail
@@ -99,8 +99,8 @@ class Solver:
             graph[literal] = antecedent_clause
         return graph
 
-    # todo should update formula with the clause that caused conflict
-    def conflict_analysis(self, formula, conflicting_assignment, trail):
+    # Grasp conflict analysis
+    def grasp_conflict_analysis(self, formula, conflicting_assignment, trail):
         implication_graph = self.build_implication_graph(trail)
         unsat_clause = formula.find_first_unsat_clause(conflicting_assignment)
         clauses_involved = {unsat_clause}
@@ -120,17 +120,54 @@ class Solver:
 
         new_clause_to_add = Clause(set())
         for literal in literals_involved:
-            if implication_graph[literal] is None: # UIP
+            if implication_graph[literal] is None:  # UIP
                 assigned_value = conflicting_assignment[literal]
                 l = -Literal(str(literal)) if assigned_value == 1 else Literal(str(literal))
                 new_clause_to_add.literals.add(l)
         # print("learnt clause: ", new_clause_to_add)
         return new_clause_to_add
 
+    # 1-UIP conflict analysis follow trail backwards
+    def conflict_analysis(self, formula, conflicting_assignment, trail):
+        unsat_clause = formula.find_first_unsat_clause(conflicting_assignment)
+        conflict_clause = unsat_clause
+
+        literals_at_this_level = set()
+        i = len(trail) - 1
+        # First pass to get all literals at this level
+        while True:
+            literal, value, antecedent_clause = trail[i]
+            if antecedent_clause is None:
+                break
+            literals_at_this_level.add(literal)
+            i = i - 1
+
+        # Second pass to resolve clauses backward with respect to trail
+        i = len(trail) - 1
+        while i >= 0:
+            num_of_implied_literals_at_this_level = len(
+                [l for l in conflict_clause.literals if l.literal in literals_at_this_level])
+            if num_of_implied_literals_at_this_level == 1:
+                break  # Reached 1-UIP point. This happens when the resolved clause has only one literal decided at this decision level
+            literal, value, antecedent_clause = trail[i]
+            i = i - 1
+            if literal not in {l.literal for l in conflict_clause.literals}:
+                continue # Irrelevant literal - does not cause the conflict clause
+            if antecedent_clause is None:
+                break
+            conflict_clause = Clause.resolve(conflict_clause, antecedent_clause)
+        # print(conflict_clause)
+        return conflict_clause
+
     def backtrack(self, conflict_clause, assignment, trail):
+        flag = False
         while len(trail) > 0:
             literal, value, antecedent = trail.pop()
             assignment[literal] = ENUM.UNASSIGNED
             for conflict_clause_literal in conflict_clause.literals:
                 if literal == conflict_clause_literal.literal:
-                    break
+                    flag = True
+            if antecedent is None and flag:  # This time we just flip the variable
+                assignment[literal] = 1 - value
+                trail.append((literal, 1 - value, conflict_clause))
+                break

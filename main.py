@@ -14,6 +14,6 @@ def main():
     print(assignment, sat_result)
     print(formula.evaluate(assignment))
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     main()

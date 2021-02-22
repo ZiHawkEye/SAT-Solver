@@ -18,17 +18,6 @@ class Solver:
         self.n_literals = n_literals
         self.formula = formula
         self.decision_level = 0
-        self.backtrack_assignments = {
-            0: {
-                i: (ENUM.UNASSIGNED, self.decision_level) for i in range(1, n_literals + 1)
-            }
-        }
-        # Since no assignments have been made, all the antecedent clauses at decision level 0 is empty
-        self.backtrack_antecedent_clauses = {
-            0: {
-                i: [] for i in range(1, n_literals + 1)
-            }
-        }
         self.num_of_unit_prop_calls = 0
 
     '''
@@ -55,50 +44,27 @@ class Solver:
     '''
 
     def cdcl_solve(self):
-        next_assignment, sat_status, next_antecedent_clauses = self.unit_propagate(self.formula,
-                                                                                   self.backtrack_assignments[0],
-                                                                                   self.backtrack_antecedent_clauses[0])
-        if sat_status == ENUM.UNSAT:
-            return next_assignment, ENUM.UNSAT
-
+        trail = []  # Additional stack to keep track of assignments and implication graph
+        assignment = {i: ENUM.UNDECIDED for i in range(1, self.n_literals + 1)} # Initially all unassigned
         while True:
-            next_unassigned_literal, value = self.pick_branch(self.formula, next_assignment)
-            if next_unassigned_literal is None and sat_status == ENUM.SAT:
-                break
+            assignment, trail = self.unit_propagate(self.formula, assignment, trail)
+            if self.formula.evaluate(assignment) == ENUM.UNSAT:
+                if self.decision_level == 0:
+                    return assignment, ENUM.UNSAT
+                conflict_clause = self.conflict_analysis(self.formula, assignment, trail)
+                self.backtrack(conflict_clause, assignment, trail) # Undo assignments
+                self.formula.clauses.add(conflict_clause)
 
-            self.decision_level += 1
-
-            # Copy from previous decision level
-            next_antecedent_clauses = copy.deepcopy(self.backtrack_antecedent_clauses[self.decision_level - 1])
-            next_assignment = self.backtrack_assignments[self.decision_level - 1].copy()
-
-            next_assignment[next_unassigned_literal] = (value, self.decision_level)  # Assign it based it pick branch
-            self.backtrack_antecedent_clauses[self.decision_level] = next_antecedent_clauses
-            self.backtrack_assignments[self.decision_level] = next_assignment
-
-            next_assignment, sat_status, next_antecedent_clauses = self.unit_propagate(self.formula,
-                                                                                       next_assignment,
-                                                                                       next_antecedent_clauses)
-            if sat_status == ENUM.CONFLICT:
-                backtrack_level = self.conflict_analysis(self.formula,
-                                                         next_assignment,
-                                                         next_antecedent_clauses)  # Updates clause by inserting clause that caused the conflict
-                if backtrack_level < 0:
-                    return next_assignment, ENUM.UNSAT
-                else:
-                    self.decision_level = backtrack_level  # Backtracking only needs to move to the backtrack level returned from conflict analysis
-                    next_assignment, sat_status, next_antecedent_clauses = self.unit_propagate(self.formula,
-                                                                                               self.backtrack_assignments[
-                                                                                                   self.decision_level],
-                                                                                               self.backtrack_antecedent_clauses[
-                                                                                                   self.decision_level])
-
-        # found a satisfying assignment
-        return self.backtrack_assignments[self.decision_level], ENUM.SAT
+            else:
+                if len(trail) == self.n_literals:
+                    return assignment, ENUM.SAT
+                self.decision_level += 1
+                literal, value = self.pick_branch(self.formula, assignment) # Pick a literal and assign it a value
+                trail.append((literal, value, None)) # Literal, Assigned Value and Antecedent Clause
+                assignment[literal] = value # update assignment
 
     def get_next_unassigned_literal(self, assignment):
-        for literal, assign in assignment.items():
-            value, decision_level = assign
+        for literal, value in assignment.items():
             if value == ENUM.UNASSIGNED:
                 return literal
         return None
@@ -106,30 +72,36 @@ class Solver:
     def get_status(self, formula, assignment):
         return formula.evaluate(assignment)
 
-    # Should just modify both assignment and antecedent_clauses directly
-    def unit_propagate(self, formula, assignment, antecedent_clauses):
+    # Should just modify both assignment and trail directly
+    def unit_propagate(self, formula, assignment, trail):
         self.num_of_unit_prop_calls += 1  # just to keep track and debug
 
         unit_clause, literal = formula.get_unit_clause_literal(assignment)
         while literal is not None:
             # update assignment
-            antecedent_clauses[literal.literal].append(unit_clause)
             if literal.is_negated:
-                assignment[literal.literal] = (
-                    0, self.decision_level)  # Assign 0 to negated literal at this dl
+                assignment[literal.literal] = 0 # Assign 0 to negated literal
+                trail.append((literal.literal, 0, unit_clause))
             else:
-                assignment[literal.literal] = (1, self.decision_level)  # Assign 1 to literal at this dl
+                assignment[literal.literal] = 1 # Assign 1 to literal
+                trail.append((literal.literal, 1, unit_clause))
             unit_clause, literal = formula.get_unit_clause_literal(assignment)
-        sat_status = formula.evaluate(assignment)
-        return assignment, sat_status, antecedent_clauses
+        return assignment, trail
 
     # todo pick literal and assign a value to it. - can try greedy
     def pick_branch(self, formula, assignment):
         literal = self.get_next_unassigned_literal(assignment)
         return literal, 1
 
+    def build_implication_graph(self, trail):
+        graph = {}
+        for literal, value, antecedent_clause in trail:
+            graph[literal] = antecedent_clause
+        return graph
+
     # todo should update formula with the clause that caused conflict
-    def conflict_analysis(self, formula, conflicting_assignment, antecedent_clauses):
+    def conflict_analysis(self, formula, conflicting_assignment, trail):
+        implication_graph = self.build_implication_graph(trail)
         unsat_clause = formula.find_first_unsat_clause(conflicting_assignment)
         clauses_involved = {unsat_clause}
         clauses_to_resolve = [unsat_clause]
@@ -137,28 +109,28 @@ class Solver:
         literals_queue = [literal for literal in unsat_clause.literals]
         while len(literals_queue) > 0:
             literal = literals_queue.pop()
-            conflicted_clauses = antecedent_clauses[literal.literal]
-            for clause in conflicted_clauses:
-                if clause not in clauses_involved:
-                    clauses_involved.add(clause)
-                    clauses_to_resolve.append(clause)
-                    for l in clause.literals:
-                        if l.literal not in literals_involved:
-                            literals_involved.add(l.literal)
-                            literals_queue.append(l)
+            conflicted_clause = implication_graph[literal.literal]
+            if conflicted_clause is not None:
+                clauses_involved.add(conflicted_clause)
+                clauses_to_resolve.append(conflicted_clause)
+                for l in conflicted_clause.literals:
+                    if l.literal not in literals_involved:
+                        literals_involved.add(l.literal)
+                        literals_queue.append(l)
 
         new_clause_to_add = Clause(set())
         for literal in literals_involved:
-            if len(antecedent_clauses[literal]) == 0:
-                assigned_value, decision_level = conflicting_assignment[literal]
+            if implication_graph[literal] is None: # UIP
+                assigned_value = conflicting_assignment[literal]
                 l = -Literal(str(literal)) if assigned_value == 1 else Literal(str(literal))
                 new_clause_to_add.literals.add(l)
         print("learnt clause: ", new_clause_to_add)
-        formula.clauses.add(new_clause_to_add)  # Update formula directly
-        assignments_that_caused_conflict = [conflicting_assignment[literal] for literal in literals_involved]
-        highest_decision_level = max([-1] + [decision_level for assigned_value, decision_level in assignments_that_caused_conflict])
-        # Backtrack to the second highest level
-        backtrack_level = max([-1] + [decision_level for assigned_value, decision_level in assignments_that_caused_conflict if
-                                      decision_level < highest_decision_level])
-        # print(backtrack_level, highest_decision_level, self.decision_level)
-        return backtrack_level
+        return new_clause_to_add
+
+    def backtrack(self, conflict_clause, assignment, trail):
+        while len(trail) > 0:
+            literal, value, antecedent = trail.pop()
+            assignment[literal] = ENUM.UNASSIGNED
+            for conflict_clause_literal in conflict_clause.literals:
+                if literal == conflict_clause_literal.literal:
+                    break

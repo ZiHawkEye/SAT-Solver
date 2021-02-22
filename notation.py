@@ -113,7 +113,7 @@ class Literal(object):
         return Literal(negated_string_form)
 
     def evaluate(self, assignment):
-        value, decision_level = assignment[self.literal]
+        value = assignment[self.literal]
         if self.is_negated:
             return 1 - value
         else:

@@ -124,7 +124,7 @@ class Solver:
                 assigned_value = conflicting_assignment[literal]
                 l = -Literal(str(literal)) if assigned_value == 1 else Literal(str(literal))
                 new_clause_to_add.literals.add(l)
-        print("learnt clause: ", new_clause_to_add)
+        # print("learnt clause: ", new_clause_to_add)
         return new_clause_to_add
 
     def backtrack(self, conflict_clause, assignment, trail):

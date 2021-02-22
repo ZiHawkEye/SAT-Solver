@@ -61,13 +61,9 @@ class Solver:
         if sat_status == ENUM.UNSAT:
             return next_assignment, ENUM.UNSAT
 
-        iteration_count = 0
         while True:
-            iteration_count += 1
-            if iteration_count > 5:
-                break
             next_unassigned_literal, value = self.pick_branch(self.formula, next_assignment)
-            if next_unassigned_literal is None:
+            if next_unassigned_literal is None and sat_status == ENUM.SAT:
                 break
 
             self.decision_level += 1
@@ -75,7 +71,7 @@ class Solver:
             # Copy from previous decision level
             next_antecedent_clauses = copy.deepcopy(self.backtrack_antecedent_clauses[self.decision_level - 1])
             next_assignment = self.backtrack_assignments[self.decision_level - 1].copy()
-            print(next_assignment, "backtrack")
+
             next_assignment[next_unassigned_literal] = (value, self.decision_level)  # Assign it based it pick branch
             self.backtrack_antecedent_clauses[self.decision_level] = next_antecedent_clauses
             self.backtrack_assignments[self.decision_level] = next_assignment
@@ -87,11 +83,15 @@ class Solver:
                 backtrack_level = self.conflict_analysis(self.formula,
                                                          next_assignment,
                                                          next_antecedent_clauses)  # Updates clause by inserting clause that caused the conflict
-
                 if backtrack_level < 0:
                     return next_assignment, ENUM.UNSAT
                 else:
                     self.decision_level = backtrack_level  # Backtracking only needs to move to the backtrack level returned from conflict analysis
+                    next_assignment, sat_status, next_antecedent_clauses = self.unit_propagate(self.formula,
+                                                                                               self.backtrack_assignments[
+                                                                                                   self.decision_level],
+                                                                                               self.backtrack_antecedent_clauses[
+                                                                                                   self.decision_level])
 
         # found a satisfying assignment
         return self.backtrack_assignments[self.decision_level], ENUM.SAT
@@ -130,13 +130,9 @@ class Solver:
 
     # todo should update formula with the clause that caused conflict
     def conflict_analysis(self, formula, conflicting_assignment, antecedent_clauses):
-        print(conflicting_assignment)
         unsat_clause = formula.find_first_unsat_clause(conflicting_assignment)
         clauses_involved = {unsat_clause}
         clauses_to_resolve = [unsat_clause]
-        '''for k,v in antecedent_clauses.items():
-            print("{}: {}, ".format(k, [vv.to_string() for vv in v]), end='')
-        print("")'''
         literals_involved = set([literal.literal for literal in unsat_clause.literals])
         literals_queue = [literal for literal in unsat_clause.literals]
         while len(literals_queue) > 0:
@@ -150,13 +146,19 @@ class Solver:
                         if l.literal not in literals_involved:
                             literals_involved.add(l.literal)
                             literals_queue.append(l)
-        clauses_to_resolve.reverse()
-        # print([c.to_string() for c in clauses_to_resolve])
-        new_clause_to_add = clauses_to_resolve.pop()
-        while len(clauses_to_resolve) > 0:
-            new_clause_to_add = Clause.resolve(new_clause_to_add, clauses_to_resolve.pop())
-        print(new_clause_to_add)
+
+        new_clause_to_add = Clause(set())
+        for literal in literals_involved:
+            if len(antecedent_clauses[literal]) == 0:
+                assigned_value, decision_level = conflicting_assignment[literal]
+                l = -Literal(str(literal)) if assigned_value == 1 else Literal(str(literal))
+                new_clause_to_add.literals.add(l)
+        print("learnt clause: ", new_clause_to_add)
         formula.clauses.add(new_clause_to_add)  # Update formula directly
         assignments_that_caused_conflict = [conflicting_assignment[literal] for literal in literals_involved]
-        backtrack_level = max([decision_level for assigned_value, decision_level in assignments_that_caused_conflict if decision_level < self.decision_level])
+        highest_decision_level = max([-1] + [decision_level for assigned_value, decision_level in assignments_that_caused_conflict])
+        # Backtrack to the second highest level
+        backtrack_level = max([-1] + [decision_level for assigned_value, decision_level in assignments_that_caused_conflict if
+                                      decision_level < highest_decision_level])
+        # print(backtrack_level, highest_decision_level, self.decision_level)
         return backtrack_level

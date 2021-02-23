@@ -135,7 +135,7 @@ class Solver:
         literals_at_this_level = set()
         i = len(trail) - 1
         # First pass to get all literals at this level
-        while True:
+        while i >= 0:
             literal, value, antecedent_clause = trail[i]
             literals_at_this_level.add(literal)
             i = i - 1
@@ -156,7 +156,6 @@ class Solver:
             if antecedent_clause is None:
                 continue
             conflict_clause = Clause.resolve(conflict_clause, antecedent_clause)
-        # print(conflict_clause)
         return conflict_clause
 
     def backtrack(self, conflict_clause, assignment, trail):
@@ -168,8 +167,8 @@ class Solver:
             for conflict_clause_literal in conflict_clause.literals:
                 if literal == conflict_clause_literal.literal:
                     flag = True
-            if antecedent is None and flag:  # This time we just flip the variable
-                # assignment[literal] = 1 - value
-                # trail.append((literal, 1 - value, conflict_clause))
-                # print(trail)
-                break
+
+            if antecedent is None:
+                self.decision_level = self.decision_level - 1
+                if flag:
+                    break

@@ -137,10 +137,10 @@ class Solver:
         # First pass to get all literals at this level
         while True:
             literal, value, antecedent_clause = trail[i]
-            if antecedent_clause is None:
-                break
             literals_at_this_level.add(literal)
             i = i - 1
+            if antecedent_clause is None:
+                break
 
         # Second pass to resolve clauses backward with respect to trail
         i = len(trail) - 1
@@ -154,13 +154,14 @@ class Solver:
             if literal not in {l.literal for l in conflict_clause.literals}:
                 continue # Irrelevant literal - does not cause the conflict clause
             if antecedent_clause is None:
-                break
+                continue
             conflict_clause = Clause.resolve(conflict_clause, antecedent_clause)
         # print(conflict_clause)
         return conflict_clause
 
     def backtrack(self, conflict_clause, assignment, trail):
         flag = False
+        # print(trail, conflict_clause)
         while len(trail) > 0:
             literal, value, antecedent = trail.pop()
             assignment[literal] = ENUM.UNASSIGNED
@@ -168,6 +169,7 @@ class Solver:
                 if literal == conflict_clause_literal.literal:
                     flag = True
             if antecedent is None and flag:  # This time we just flip the variable
-                assignment[literal] = 1 - value
-                trail.append((literal, 1 - value, conflict_clause))
+                # assignment[literal] = 1 - value
+                # trail.append((literal, 1 - value, conflict_clause))
+                # print(trail)
                 break

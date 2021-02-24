@@ -10,6 +10,7 @@ class Solver:
         self.assigned_vars = {} # { decision_level: { variable } }
         self.unassigned = { i for i in range(1, n_vars + 1) }
         self.decision_level = 0
+        self.full_formula = copy.deepcopy(formula) # used in conflict analysis for implication graph
 
     def assign_variable(self, variable, value, decision_level, antecedent=None):
         print("assign {} = {} @ {} with antecedent {}".format(variable, value, decision_level, str(antecedent)))
@@ -25,7 +26,7 @@ class Solver:
             
     def cdcl(self, formula):
         """
-        Implements CDCL algorithm.
+        Implements CDCL algorithm. 
             :param formula: SAT formula.
             :returns: truth assignment that satisfies the formula
         """
@@ -36,29 +37,40 @@ class Solver:
             
         while not self.all_variables_assigned():
             # picks the variable and value to assign
-            variable, value = self.pick_branching_variable() 
+            variable, value = self.pick_branching_variable()
+
             # increments decision level after choosing a variable
             self.decision_level += 1 
-            self.assign_variable(variable, value, self.decision_level)
-            formula = self.unit_propagation(formula)
-            # stores formula after unit propagation
+            
+            # stores formula before unit propagation
             self.backtracking[self.decision_level] = copy.deepcopy(formula)
 
+            self.assign_variable(variable, value, self.decision_level)
+            formula = self.unit_propagation(formula)
+            
             if (formula.value() == UNSAT):
-                learnt_clause, stage = self.conflict_analysis(formula) # conflict analysis to learn new clause and level to backtrack to
+                learnt_clause, stage, uip_variable = self.conflict_analysis() # conflict analysis to learn new clause and level to backtrack to
                 print("learnt clause: {}, stage: {}".format(str(learnt_clause), str(stage)))
 
                 if stage < 0:
                     return {}, UNSAT
                 else:
-                    # backtracks to the decision level and adds learnt clause, then proceeds with unit propagation
+                    # backtracks to the decision level
                     formula = self.backtrack(stage).union(Formula({ learnt_clause }))
+                    # updates the full formula 
+                    self.full_formula = copy.deepcopy(formula)
+
+                    # adds uip variable assignment to new stage
+                    self.assign_variable(uip_variable, uip_variable.value(), stage)
+                    
+                    # stores formula before unit propagation
+                    self.backtracking[self.decision_level] = copy.deepcopy(formula)
+                    
+                    # proceeds with unit propagation at the new stage
+                    formula = self.unit_propagation(formula)
+                    
                     print("new formula: " + str(formula))
                     print("assignments: " + str(Variable.get_assignments()))
-                    formula = self.unit_propagation(formula)
-                    # stores formula after unit propagation
-                    self.backtracking[self.decision_level] = copy.deepcopy(formula)
-                    self.decision_level = stage
 
         return Variable.get_assignments(), formula.value()
 
@@ -77,7 +89,7 @@ class Solver:
             :returns: Modified SAT formula after applying unit clause rule.
         """        
         while True:
-            # checks if there is a conflict
+            # terminates if there is a conflict
             if formula.value() == UNSAT:
                 print("conflict")
                 return formula
@@ -86,11 +98,12 @@ class Solver:
             antecedent = None # antecedent is the unit clause where the rule is applied
             
             for clause in formula.clauses:
-                if clause.get_unit_variable() != None:
-                    unit_variable = clause.get_unit_variable()
+                unit_variable = clause.get_unit_variable()
+                if unit_variable != None:
                     antecedent = clause
                     break
-
+            
+            # terminates if there are no more unit clauses
             if antecedent == None:
                 break
 
@@ -110,7 +123,6 @@ class Solver:
             
             clauses = { remove_literal(negation, clause) for clause in clauses }
             formula = Formula(clauses)
-            print("new formula: " + str(formula))
 
         return formula
 
@@ -120,9 +132,10 @@ class Solver:
         resolved_clause |= { variable for variable in clause2.variables if variable.negation() not in clause1 }
         return Clause(resolved_clause)
 
-    def conflict_analysis(self, formula):
+    def conflict_analysis(self):
         """
         "Backtracks" in the implication graph via resolution until the initial assignments leading to the conflict have been learnt.
+        Uses 1-UIP heuristic.
             :param formula: SAT formula.
             :returns: Learnt clause, stage to backtrack to.
         """
@@ -136,30 +149,42 @@ class Solver:
             return None
 
         # there is a unique implication point at the current decision level that only has 1 variable assigned in the clause
-        def is_uip(clause):
+        # returns the uip variable if found, else returns None
+        def get_uip(clause):
             variables = { variable for variable in clause.variables 
                     if variable.get_decision_level() == self.decision_level }
-            return len(variables) == 1
 
-        learnt_clause = [clause for clause in formula.clauses if clause.value() == UNSAT].pop() # starts with the unsatisfied clause
+            if len(variables) == 1:
+                return variables.pop()
+                
+            return None
+
+        # starts conflict analysis with the unsatisfied clause
+        formula = self.full_formula
+        learnt_clause = [clause for clause in formula.clauses if clause.value() == UNSAT].pop() 
         
+        uip_variable = None
         while True: 
-            # stops at the first uip
-            if (is_uip(learnt_clause)):
+            # terminates at the first uip
+            uip_variable = get_uip(learnt_clause)
+            if uip_variable != None:
                 break
+            
+            # finds the variables to "backtrack" in the implication graph
+            target_variable = pred(learnt_clause)
+            assert target_variable != None
 
-            target_variable = pred(learnt_clause) # finds the variables to "backtrack" in the implication graph
-            if target_variable == None:
-                # UNSAT if no variable available in learnt clause for "backtracking" in the implication graph (TODO: confirm)
-                return Clause(set()), -1
-
+            print("learnt clause: {}, target variable: {}, antecedent: {}".format(
+                    str(learnt_clause), str(target_variable), str(target_variable.get_antecedent())))
             learnt_clause = self.resolution(learnt_clause, target_variable.get_antecedent())
 
         # backtracking heuristic - highest decision level other than the uip variable
+        # if clause only contains uip variable, will return -1
         stage = max({ variable.get_decision_level() for variable in learnt_clause.variables 
-                if variable.get_decision_level() != self.decision_level}, 
-                default=0)
-        return learnt_clause, stage
+                if variable != uip_variable}, 
+                default=-1)
+
+        return learnt_clause, stage, uip_variable
 
     def backtrack(self, stage):
         """
@@ -168,8 +193,8 @@ class Solver:
             :returns: Restored formula at the given decision level.
         """
         print("backtracking to level " + str(stage))
-        # removes changes after chosen decision level
-        for i in range(stage + 1, self.decision_level + 1):
+        # removes changes until start of chosen decision level
+        for i in range(stage, self.decision_level + 1):
             # adds to unassigned variables
             variables = set()
 
@@ -177,7 +202,7 @@ class Solver:
                 variables = self.assigned_vars[i]
                 self.unassigned |= variables
             
-            # removes assigned vars prior to chosen level
+            # removes assigned vars in chosen level
             self.assigned_vars[i] = set()
             
             for variable in variables:

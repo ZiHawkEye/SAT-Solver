@@ -92,7 +92,7 @@ class Variable:
         return Variable.antecedents[self.variable] if self.variable in Variable.antecedents else None
 
     def get_decision_level(self):
-        return Variable.decision_levels[self.variable] if self.variable in Variable.decision_levels else None
+        return Variable.decision_levels[self.variable] if self.variable in Variable.decision_levels else 0
     
     def negation(self):
         variable = Variable(self.variable)

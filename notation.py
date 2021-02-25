@@ -42,6 +42,10 @@ class Clause:
         return max({ variable.value() for variable in self.variables }, default=0) # only possible due to total order on assignments
 
     def get_unit_variable(self):
+        # returns None if value of clause is already determined
+        if self.value() != UNDECIDED:
+            return None
+
         # returns unit variable iff all variables except 1 are assigned 0, else return None
         false_count = len([variable for variable in self.variables if variable.value() == 0])
 
@@ -65,15 +69,9 @@ class Variable:
     def __init__(self, variable, value=None, antecedent=None, decision_level=None):
         self.variable = abs(variable)
         self.is_negated = variable < 0
-
-        if value != None:
-            Variable.assignments[self.variable] = value if not self.is_negated else 1 - value
-        
-        if antecedent != None:
-            Variable.antecedents[self.variable] = antecedent
-        
-        if decision_level != None:
-            Variable.decision_levels[self.variable] = decision_level
+        Variable.assignments[self.variable] = value if not self.is_negated else 1 - value
+        Variable.antecedents[self.variable] = antecedent
+        Variable.decision_levels[self.variable] = decision_level
     
     def __str__(self):
         return str(-1 * self.variable) if self.is_negated else str(self.variable)
@@ -95,9 +93,13 @@ class Variable:
         return Variable.decision_levels[self.variable] if self.variable in Variable.decision_levels else 0
     
     def negation(self):
-        variable = Variable(self.variable)
+        init_val = self.value()
 
+        variable = self.variable
         if not self.is_negated:
-            variable.is_negated = True
-        
+            variable = -self.variable
+
+        variable = Variable(variable, 1 - self.value(), self.get_antecedent(), self.get_decision_level())
+
+        assert init_val == self.value()
         return variable

@@ -1,8 +1,7 @@
 import os
 from dimacs_parser import *
 from solver import *
-import os
-import copy
+import time
 
 sat_path =r'./sat_cases'
 unsat_path =r'./unsat_cases'
@@ -16,9 +15,11 @@ for path in sat_paths:
 
     formula, n_vars = dimacs_parse(test_case)
     solver = Solver(formula, n_vars)
+    start_time = time.time()
     assignments, value = solver.cdcl(formula)
+    end_time = time.time()
     assert value == SAT
-    print("{} passed".format(path))
+    print("{} passed in {}s".format(path, str(end_time - start_time)))
 
 for path in unsat_paths:
     with open(os.path.join(unsat_path, path)) as f:
@@ -26,9 +27,11 @@ for path in unsat_paths:
 
     formula, n_vars = dimacs_parse(test_case)
     solver = Solver(formula, n_vars)
+    start_time = time.time()
     assignments, value = solver.cdcl(formula)
+    end_time = time.time()
     assert value == UNSAT
-    print("{} passed".format(path))
+    print("{} passed in {}s".format(path, str(end_time - start_time)))
 
 if __name__ == "__main__":
     main()

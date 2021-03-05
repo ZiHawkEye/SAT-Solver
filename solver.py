@@ -5,9 +5,9 @@ from notation import *
 from logger import Logger
 
 class Solver:
-    def __init__(self, formula, n_vars):
-        self.assigned_vars = {} # { decision_level: [ variable_int ] } - contains the list of variables in lifo assignment order
-        self.unassigned = { i for i in range(1, n_vars + 1) } # { variable_int }
+    def __init__(self, formula, n_vars, isLog=False):
+        self.assigned_vars = {} # { decision_level: [ int_variable ] } - contains the list of variables in lifo assignment order
+        self.unassigned = { i for i in range(1, n_vars + 1) } # { int_variable }
         self.decision_level = 0
         self.logger = Logger(False)
 
@@ -113,14 +113,14 @@ class Solver:
             :param formula: SAT formula.
             :returns: New formula with learnt clause - resolved clauses, stage to backtrack to.
         """
-        # adds variables in the clause at the current decision level that has an antecedent to queued_variables
-        # this is to ensure that variables are chosen in order of last assigned to first in the current decision level
-        def add_to_queue(clause, queued_variables):
+        # returns first variable in the clause at the current decision level that has an antecedent, else None
+        def pred(clause):
             for variable in clause.variables:
                 if (variable.get_antecedent() != None 
-                        and variable.get_decision_level() == self.decision_level
-                        and variable not in queued_variables):
-                    queued_variables.append(variable)
+                        and variable.get_decision_level() == self.decision_level):
+                    return variable
+            
+            return None
 
         # there is a unique implication point at the current decision level that only has 1 variable assigned in the clause
         # returns the uip variable if found, else returns None
@@ -137,9 +137,6 @@ class Solver:
         learnt_clause = [clause for clause in formula.clauses if clause.value() == UNSAT].pop() 
         self.logger.log("unsat clause: " + str(learnt_clause))
         
-        uip_variable = None
-        queued_variables = []
-        add_to_queue(learnt_clause, queued_variables)
         # iterates through assigned vars at current decision level from last to first assigned
         while True: 
             # terminates at the first uip
@@ -148,13 +145,13 @@ class Solver:
                 break
 
             # finds target variable at the current decision level to use as pivot in resolution
-            target_variable = queued_variables.pop(0)
+            target_variable = pred(learnt_clause)
+            assert(target_variable != None)
             self.logger.log("resolved clause: {}, target variable: {}, antecedent: {}".format(
                     str(learnt_clause), str(target_variable), str(target_variable.get_antecedent())))
             
             learnt_clause = self.resolution(learnt_clause, target_variable.get_antecedent(), target_variable)
-            add_to_queue(learnt_clause, queued_variables)
-
+           
         # backtracking heuristic - highest decision level other than the uip variable
         # if clause only contains uip variable, will return 0
         stage = max({ variable.get_decision_level() for variable in learnt_clause.variables 
@@ -174,19 +171,17 @@ class Solver:
             :returns: Restored formula at the given decision level.
         """
         self.logger.log("backtracking to level " + str(stage))
-        
+
         # removes changes until start of chosen decision level
         for i in range(stage, self.decision_level + 1):
             # adds to unassigned variables
-            variables = []
-
             if i in self.assigned_vars:
-                variables = self.assigned_vars[i]
-                self.unassigned |= set(variables)
+                self.unassigned |= set(self.assigned_vars[i])
             
+            # sets all assigned variables in decision level to unassigned
+            for variable in self.assigned_vars[i]:
+                Variable(variable, UNASSIGNED)
+
             # removes assigned vars in level
             self.assigned_vars[i] = []
             
-            for variable in variables:
-                # sets value in variables to unassigned
-                Variable(variable, UNASSIGNED)

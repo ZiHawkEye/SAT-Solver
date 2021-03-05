@@ -5,8 +5,11 @@ Defines notation classes.
 from constants import *
 
 class Formula:
-    def __init__(self, clauses):
+    def __init__(self, clauses, assignments=None):
         self.clauses = frozenset(clauses)
+
+        if assignments != None:
+            Variable.set_assignments(assignments)
     
     def __str__(self):
         formula_string = ", ".join([str(clause) for clause in self.clauses])
@@ -15,11 +18,11 @@ class Formula:
     def __eq__(self, other):
         return isinstance(other, Formula) and self.clauses == other.clauses
 
-    def value(self):
-        return min({ clause.value() for clause in self.clauses }, default=1) # only possible due to total order on assignments
-
     def __contains__(self, clause):
         return clause in self.clauses
+
+    def value(self):
+        return min({ clause.value() for clause in self.clauses }, default=1) # only possible due to total order on assignments
 
     def union(self, formula):
         clauses = self.clauses.union(formula.clauses)
@@ -38,6 +41,9 @@ class Clause:
     def __eq__(self, other):
         return isinstance(other, Clause) and self.variables == other.variables
 
+    def __contains__(self, variable):
+        return variable in self.variables
+
     def value(self):
         return max({ variable.value() for variable in self.variables }, default=0) # only possible due to total order on assignments
 
@@ -53,18 +59,19 @@ class Clause:
             return [variable for variable in self.variables if variable.value() != 0].pop()
         
         return None
-
-    def __contains__(self, variable):
-        return variable in self.variables
         
 class Variable:
-    assignments = {} # { variable_int: value }
-    antecedents = {} # { variable_int: antecedent }
-    decision_levels = {} # { variable_int: decision_level }
+    assignments = {} # { int_variable: value }
+    antecedents = {} # { int_variable: antecedent }
+    decision_levels = {} # { int_variable: decision_level }
 
     @classmethod
     def get_assignments(cls):
         return Variable.assignments
+
+    @classmethod
+    def set_assignments(cls, assignments):
+        Variable.assignments = assignments
 
     def __init__(self, variable, value=None, antecedent=None, decision_level=None):
         self.variable = abs(variable)

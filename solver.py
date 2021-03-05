@@ -2,23 +2,24 @@
 Defines SAT solver.
 """
 from notation import *
-import copy
+from logger import Logger
 
 class Solver:
     def __init__(self, formula, n_vars):
-        self.assigned_vars = {} # { decision_level: { variable } }
-        self.unassigned = { i for i in range(1, n_vars + 1) }
+        self.assigned_vars = {} # { decision_level: [ variable_int ] } - contains the list of variables in lifo assignment order
+        self.unassigned = { i for i in range(1, n_vars + 1) } # { variable_int }
         self.decision_level = 0
+        self.logger = Logger(False)
 
     def assign_variable(self, variable, value, decision_level, antecedent=None):
-        print("assign {} = {} @ {} with antecedent {}".format(variable, value, decision_level, str(antecedent)))
+        self.logger.log("assign {} = {} @ {} with antecedent {}".format(variable, value, decision_level, str(antecedent)))
         
         # records assignment
         if self.decision_level not in self.assigned_vars:
-            self.assigned_vars[decision_level] = set()
+            self.assigned_vars[decision_level] = []
         
         self.unassigned.remove(variable)
-        self.assigned_vars[decision_level].add(variable)
+        self.assigned_vars[decision_level].append(variable)
         Variable(variable, value, antecedent, decision_level)
             
     def cdcl(self, formula):
@@ -29,40 +30,33 @@ class Solver:
         """
         while True:
             formula = self.unit_propagation(formula)
+
             if formula.value() == SAT:
                 break
 
             if (formula.value() == UNSAT):
-                learnt_clause, stage, uip_variable = self.conflict_analysis(formula) # conflict analysis to learn new clause and level to backtrack to
-                print("learnt clause: {}, stage: {}".format(str(learnt_clause), str(stage)))
-                    
-                if stage < 0:
+                if self.decision_level == 0:
                     return {}, UNSAT
 
+                # conflict analysis to learn new clause and level to backtrack to  
+                formula, stage, uip_variable = self.conflict_analysis(formula) 
                 uip_variable_value = uip_variable.value()
-                # backtracks assignments
+                
+                # backtracks assignments 
                 self.backtrack(stage)
-
-                # adds the learnt clause to the formula
-                formula = formula.union(Formula({ learnt_clause }))
-
                 self.decision_level = stage
 
                 # adds uip variable assignment to new stage
                 self.assign_variable(uip_variable.variable, uip_variable_value, stage)
-                                
-                # print("new formula: " + str(formula))
-                # print("assignments: " + str(Variable.get_assignments()))
-                
+   
                 continue
-
-            variable, value = self.pick_branching_variable()
-
-            # increments decision level after choosing a variable
-            self.decision_level += 1 
-        
-            self.assign_variable(variable, value, self.decision_level)
             
+            if (formula.value() == UNDECIDED):
+                # increments decision level after choosing a variable
+                variable, value = self.pick_branching_variable()
+                self.decision_level += 1 
+                self.assign_variable(variable, value, self.decision_level)
+                
         return Variable.get_assignments(), formula.value()
 
     def all_variables_assigned(self):
@@ -82,7 +76,7 @@ class Solver:
         while True:
             # terminates if there is a conflict
             if formula.value() == UNSAT:
-                print("conflict")
+                self.logger.log("conflict")
                 return formula
 
             # find the first unit clause
@@ -104,10 +98,12 @@ class Solver:
 
         return formula
 
-    def resolution(self, clause1, clause2):
-        # removes all complementary pairs of variables in the 2 clauses
-        resolved_clause = { variable for variable in clause1.variables if variable.negation() not in clause2 }
-        resolved_clause |= { variable for variable in clause2.variables if variable.negation() not in clause1 }
+    def resolution(self, clause1, clause2, pivot):
+        # pivot - variable in clause1 whose negation is in clause2
+        # resolved clause contains all variables in both clauses except pivot and its negation
+        resolved_clause = { variable for variable in clause1.variables if variable != pivot }
+        resolved_clause |= { variable for variable in clause2.variables if variable != pivot.negation() }
+
         return Clause(resolved_clause)
 
     def conflict_analysis(self, formula):
@@ -115,16 +111,16 @@ class Solver:
         "Backtracks" in the implication graph via resolution until the initial assignments leading to the conflict have been learnt.
         Uses 1-UIP heuristic.
             :param formula: SAT formula.
-            :returns: Learnt clause, stage to backtrack to.
+            :returns: New formula with learnt clause - resolved clauses, stage to backtrack to.
         """
-        # predicate: returns the first variable in the clause at the current decision level that has an antecedent
-        # else returns None
-        def pred(clause):
+        # adds variables in the clause at the current decision level that has an antecedent to queued_variables
+        # this is to ensure that variables are chosen in order of last assigned to first in the current decision level
+        def add_to_queue(clause, queued_variables):
             for variable in clause.variables:
-                if variable.get_antecedent() != None and variable.get_decision_level() == self.decision_level:
-                    return variable
-
-            return None
+                if (variable.get_antecedent() != None 
+                        and variable.get_decision_level() == self.decision_level
+                        and variable not in queued_variables):
+                    queued_variables.append(variable)
 
         # there is a unique implication point at the current decision level that only has 1 variable assigned in the clause
         # returns the uip variable if found, else returns None
@@ -139,34 +135,37 @@ class Solver:
 
         # starts conflict analysis with the unsatisfied clause
         learnt_clause = [clause for clause in formula.clauses if clause.value() == UNSAT].pop() 
-        print("unsat: " + str(learnt_clause))
+        self.logger.log("unsat clause: " + str(learnt_clause))
         
         uip_variable = None
+        queued_variables = []
+        add_to_queue(learnt_clause, queued_variables)
+        # iterates through assigned vars at current decision level from last to first assigned
         while True: 
             # terminates at the first uip
             uip_variable = get_uip(learnt_clause)
             if uip_variable != None:
                 break
-            
-            # finds the variables to "backtrack" in the implication graph
-            target_variable = pred(learnt_clause)
-            if target_variable == None:
-                print(self.decision_level)
-                print({ str(variable.get_antecedent()) for variable in learnt_clause.variables })
-                print({ variable.get_decision_level() for variable in learnt_clause.variables })
-                assert target_variable != None
 
-            # print("resolved clause: {}, target variable: {}, antecedent: {}".format(
-            #         str(learnt_clause), str(target_variable), str(target_variable.get_antecedent())))
-            learnt_clause = self.resolution(learnt_clause, target_variable.get_antecedent())
+            # finds target variable at the current decision level to use as pivot in resolution
+            target_variable = queued_variables.pop(0)
+            self.logger.log("resolved clause: {}, target variable: {}, antecedent: {}".format(
+                    str(learnt_clause), str(target_variable), str(target_variable.get_antecedent())))
+            
+            learnt_clause = self.resolution(learnt_clause, target_variable.get_antecedent(), target_variable)
+            add_to_queue(learnt_clause, queued_variables)
 
         # backtracking heuristic - highest decision level other than the uip variable
-        # if clause only contains uip variable, will return -1
+        # if clause only contains uip variable, will return 0
         stage = max({ variable.get_decision_level() for variable in learnt_clause.variables 
                 if variable != uip_variable}, 
-                default=-1)
+                default=0)
 
-        return learnt_clause, stage, uip_variable
+        # adds the learnt clause to the formula
+        formula = formula.union(Formula({ learnt_clause }))
+
+        self.logger.log("learnt clause: {}, stage: {}".format(str(learnt_clause), str(stage)))
+        return formula, stage, uip_variable
 
     def backtrack(self, stage):
         """
@@ -174,18 +173,19 @@ class Solver:
             :param stage: Chosen decision level.
             :returns: Restored formula at the given decision level.
         """
-        print("backtracking to level " + str(stage))
+        self.logger.log("backtracking to level " + str(stage))
+        
         # removes changes until start of chosen decision level
         for i in range(stage, self.decision_level + 1):
             # adds to unassigned variables
-            variables = set()
+            variables = []
 
             if i in self.assigned_vars:
                 variables = self.assigned_vars[i]
-                self.unassigned |= variables
+                self.unassigned |= set(variables)
             
-            # removes assigned vars in chosen level
-            self.assigned_vars[i] = set()
+            # removes assigned vars in level
+            self.assigned_vars[i] = []
             
             for variable in variables:
                 # sets value in variables to unassigned

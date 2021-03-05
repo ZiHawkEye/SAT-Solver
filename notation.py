@@ -58,9 +58,9 @@ class Clause:
         return variable in self.variables
         
 class Variable:
-    assignments = {} # { variable: value }
-    antecedents = {} # { variable: antecedent }
-    decision_levels = {} # { variable: decision_level }
+    assignments = {} # { variable_int: value }
+    antecedents = {} # { variable_int: antecedent }
+    decision_levels = {} # { variable_int: decision_level }
 
     @classmethod
     def get_assignments(cls):
@@ -69,7 +69,7 @@ class Variable:
     def __init__(self, variable, value=None, antecedent=None, decision_level=None):
         self.variable = abs(variable)
         self.is_negated = variable < 0
-        Variable.assignments[self.variable] = value if not self.is_negated else 1 - value
+        Variable.assignments[self.variable] = value if not self.is_negated else 1 - value # value that the variable will return
         Variable.antecedents[self.variable] = antecedent
         Variable.decision_levels[self.variable] = decision_level
     
@@ -100,6 +100,5 @@ class Variable:
             variable = -self.variable
 
         variable = Variable(variable, 1 - self.value(), self.get_antecedent(), self.get_decision_level())
-
         assert init_val == self.value()
         return variable

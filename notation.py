@@ -18,6 +18,9 @@ class Formula:
     def __eq__(self, other):
         return isinstance(other, Formula) and self.clauses == other.clauses
 
+    def __iter__(self):
+        return iter(self.clauses)
+
     def __contains__(self, clause):
         return clause in self.clauses
 
@@ -40,6 +43,9 @@ class Clause:
 
     def __eq__(self, other):
         return isinstance(other, Clause) and self.variables == other.variables
+
+    def __iter__(self):
+        return iter(self.variables)
 
     def __contains__(self, variable):
         return variable in self.variables

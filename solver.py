@@ -82,7 +82,7 @@ class Solver:
             # find the first unit clause
             antecedent = None # antecedent is the unit clause where the rule is applied
             
-            for clause in formula.clauses:
+            for clause in formula:
                 unit_variable = clause.get_unit_variable()
                 if unit_variable != None:
                     antecedent = clause
@@ -115,7 +115,7 @@ class Solver:
         """
         # returns first variable in the clause at the current decision level that has an antecedent, else None
         def pred(clause):
-            for variable in clause.variables:
+            for variable in clause:
                 if (variable.get_antecedent() != None 
                         and variable.get_decision_level() == self.decision_level):
                     return variable
@@ -125,7 +125,7 @@ class Solver:
         # there is a unique implication point at the current decision level that only has 1 variable assigned in the clause
         # returns the uip variable if found, else returns None
         def get_uip(clause):
-            variables = { variable for variable in clause.variables 
+            variables = { variable for variable in clause 
                     if variable.get_decision_level() == self.decision_level }
 
             if len(variables) == 1:
@@ -134,7 +134,7 @@ class Solver:
             return None
 
         # starts conflict analysis with the unsatisfied clause
-        learnt_clause = [clause for clause in formula.clauses if clause.value() == UNSAT].pop() 
+        learnt_clause = [clause for clause in formula if clause.value() == UNSAT].pop() 
         self.logger.log("unsat clause: " + str(learnt_clause))
         
         # iterates through assigned vars at current decision level from last to first assigned
@@ -154,7 +154,7 @@ class Solver:
            
         # backtracking heuristic - highest decision level other than the uip variable
         # if clause only contains uip variable, will return 0
-        stage = max({ variable.get_decision_level() for variable in learnt_clause.variables 
+        stage = max({ variable.get_decision_level() for variable in learnt_clause 
                 if variable != uip_variable}, 
                 default=0)
 

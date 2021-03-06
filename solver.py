@@ -6,22 +6,14 @@ from logger import Logger
 
 class Solver:
     def __init__(self, formula, n_vars, isLog=False):
-        self.assigned_vars = {} # { decision_level: [ int_variable ] } - contains the list of variables in lifo assignment order
-        self.unassigned = { i for i in range(1, n_vars + 1) } # { int_variable }
+        self.assigned_vars = {} # { decision_level: [ variable ] } - contains the list of variables in lifo assignment order
+        self.unassigned = { i for i in range(1, n_vars + 1) } # { variable }
+        self.assignments = {} # { variable: value }
+        self.antecedents = {} # { variable: antecedent }
+        self.decision_levels = {} # { variable: decision_level }
         self.decision_level = 0
-        self.logger = Logger(False)
+        self.logger = Logger(True)
 
-    def assign_variable(self, variable, value, decision_level, antecedent=None):
-        self.logger.log("assign {} = {} @ {} with antecedent {}".format(variable, value, decision_level, str(antecedent)))
-        
-        # records assignment
-        if self.decision_level not in self.assigned_vars:
-            self.assigned_vars[decision_level] = []
-        
-        self.unassigned.remove(variable)
-        self.assigned_vars[decision_level].append(variable)
-        Variable(variable, value, antecedent, decision_level)
-            
     def cdcl(self, formula):
         """
         Implements CDCL algorithm. 
@@ -31,33 +23,36 @@ class Solver:
         while True:
             formula = self.unit_propagation(formula)
 
-            if formula.value() == SAT:
+            if self.eval_formula(formula) == SAT:
                 break
 
-            if (formula.value() == UNSAT):
+            if (self.eval_formula(formula) == UNSAT):
                 if self.decision_level == 0:
                     return {}, UNSAT
 
                 # conflict analysis to learn new clause and level to backtrack to  
-                formula, stage, uip_variable = self.conflict_analysis(formula) 
-                uip_variable_value = uip_variable.value()
+                learnt_clause, stage, uip_variable = self.conflict_analysis(formula) 
+                uip_variable_value = self.eval_variable(uip_variable)
                 
+                # adds the learnt clause to the formula
+                formula += [learnt_clause]
+
                 # backtracks assignments 
                 self.backtrack(stage)
                 self.decision_level = stage
 
                 # adds uip variable assignment to new stage
-                self.assign_variable(uip_variable.variable, uip_variable_value, stage)
-   
+                self.assign_variable(uip_variable, uip_variable_value, stage)
+
                 continue
             
-            if (formula.value() == UNDECIDED):
+            if (self.eval_formula(formula) == UNDECIDED):
                 # increments decision level after choosing a variable
                 variable, value = self.pick_branching_variable()
                 self.decision_level += 1 
                 self.assign_variable(variable, value, self.decision_level)
                 
-        return Variable.get_assignments(), formula.value()
+        return self.assignments, self.eval_formula(formula)
 
     def all_variables_assigned(self):
         return self.unassigned == set()
@@ -75,7 +70,7 @@ class Solver:
         """        
         while True:
             # terminates if there is a conflict
-            if formula.value() == UNSAT:
+            if self.eval_formula(formula) == UNSAT:
                 self.logger.log("conflict")
                 return formula
 
@@ -83,7 +78,7 @@ class Solver:
             antecedent = None # antecedent is the unit clause where the rule is applied
             
             for clause in formula:
-                unit_variable = clause.get_unit_variable()
+                unit_variable = self.get_unit_variable(clause)
                 if unit_variable != None:
                     antecedent = clause
                     break
@@ -93,18 +88,18 @@ class Solver:
                 break
 
             # if all other variables in the clause have value 0, then the last variable must have value 1
-            value = 0 if unit_variable.is_negated else 1
-            self.assign_variable(unit_variable.variable, value, self.decision_level, antecedent)
+            value = 0 if unit_variable < 0 else 1
+            self.assign_variable(unit_variable, value, self.decision_level, antecedent)
 
         return formula
 
     def resolution(self, clause1, clause2, pivot):
         # pivot - variable in clause1 whose negation is in clause2
         # resolved clause contains all variables in both clauses except pivot and its negation
-        resolved_clause = { variable for variable in clause1.variables if variable != pivot }
-        resolved_clause |= { variable for variable in clause2.variables if variable != pivot.negation() }
+        resolved_clause = { variable for variable in clause1 if variable != pivot }
+        resolved_clause |= { variable for variable in clause2 if variable != -pivot }
 
-        return Clause(resolved_clause)
+        return resolved_clause
 
     def conflict_analysis(self, formula):
         """
@@ -116,8 +111,8 @@ class Solver:
         # returns first variable in the clause at the current decision level that has an antecedent, else None
         def pred(clause):
             for variable in clause:
-                if (variable.get_antecedent() != None 
-                        and variable.get_decision_level() == self.decision_level):
+                if (self.get_antecedent(variable) != None 
+                        and self.get_decision_level(variable) == self.decision_level):
                     return variable
             
             return None
@@ -126,7 +121,7 @@ class Solver:
         # returns the uip variable if found, else returns None
         def get_uip(clause):
             variables = { variable for variable in clause 
-                    if variable.get_decision_level() == self.decision_level }
+                    if self.get_decision_level(variable) == self.decision_level }
 
             if len(variables) == 1:
                 return variables.pop()
@@ -134,7 +129,7 @@ class Solver:
             return None
 
         # starts conflict analysis with the unsatisfied clause
-        learnt_clause = [clause for clause in formula if clause.value() == UNSAT].pop() 
+        learnt_clause = [clause for clause in formula if self.eval_clause(clause) == UNSAT].pop() 
         self.logger.log("unsat clause: " + str(learnt_clause))
         
         # iterates through assigned vars at current decision level from last to first assigned
@@ -148,21 +143,23 @@ class Solver:
             target_variable = pred(learnt_clause)
             assert(target_variable != None)
             self.logger.log("resolved clause: {}, target variable: {}, antecedent: {}".format(
-                    str(learnt_clause), str(target_variable), str(target_variable.get_antecedent())))
+                    str(learnt_clause), str(target_variable), str(self.get_antecedent(target_variable))))
             
-            learnt_clause = self.resolution(learnt_clause, target_variable.get_antecedent(), target_variable)
+            learnt_clause = self.resolution(learnt_clause, self.get_antecedent(target_variable), target_variable)
+
+            if learnt_clause == self.get_antecedent(target_variable):
+                break
            
         # backtracking heuristic - highest decision level other than the uip variable
         # if clause only contains uip variable, will return 0
-        stage = max({ variable.get_decision_level() for variable in learnt_clause 
+        stage = max({ self.get_decision_level(variable) for variable in learnt_clause 
                 if variable != uip_variable}, 
                 default=0)
 
-        # adds the learnt clause to the formula
-        formula = formula.union(Formula({ learnt_clause }))
+        print([self.get_decision_level(variable) for variable in learnt_clause])
 
         self.logger.log("learnt clause: {}, stage: {}".format(str(learnt_clause), str(stage)))
-        return formula, stage, uip_variable
+        return learnt_clause, stage, uip_variable
 
     def backtrack(self, stage):
         """
@@ -180,8 +177,77 @@ class Solver:
             
             # sets all assigned variables in decision level to unassigned
             for variable in self.assigned_vars[i]:
-                Variable(variable, UNASSIGNED)
+                self.unassign_variable(variable)
 
             # removes assigned vars in level
             self.assigned_vars[i] = []
-            
+
+    def assign_variable(self, variable, value, decision_level, antecedent=None):
+        variable = abs(variable)
+        
+        self.logger.log("assign {} = {} @ {} with antecedent {}".format(variable, value, decision_level, str(antecedent)))
+
+        # records assignment
+        if self.decision_level not in self.assigned_vars:
+            self.assigned_vars[decision_level] = []
+        
+        # removes from unassigned
+        self.unassigned.remove(variable)
+
+        # adds variable to decision level
+        self.assigned_vars[decision_level].append(variable)
+
+        # sets value of variable, antecedent, decision_level
+        self.assignments[variable] = value
+        self.antecedents[variable] = antecedent
+        self.decision_levels[variable] = decision_level
+        
+    def unassign_variable(self, variable):
+        variable = abs(variable)
+        self.assignments[variable] = UNASSIGNED
+        self.antecedents[variable] = None
+        self.decision_levels[variable] = None
+
+    def get_decision_level(self, variable):
+        variable = abs(variable)
+
+        if variable not in self.decision_levels:
+            return 0
+
+        return self.decision_levels[variable]
+
+    def get_antecedent(self, variable):
+        variable = abs(variable)
+
+        if variable not in self.antecedents:
+            return None
+
+        return self.antecedents[variable] 
+          
+    def eval_formula(self, formula):
+        return min({ self.eval_clause(clause) for clause in formula }, default=1) # only possible due to total order on assignments
+    
+    def eval_clause(self, clause):
+        return max({ self.eval_variable(variable) for variable in clause }, default=0) # only possible due to total order on assignments
+
+    def eval_variable(self, variable):
+        is_negated = variable < 0
+        variable = abs(variable)
+
+        if variable not in self.assignments:
+            return UNASSIGNED
+        
+        value = self.assignments[variable]
+        return value if not is_negated else 1 - value
+
+    def get_unit_variable(self, clause):
+        # returns None if value of clause is already determined
+        if self.eval_clause(clause) != UNDECIDED:
+            return None
+
+        # returns unit variable iff all variables except 1 are assigned 0, else return None
+        unassigned_variables = [variable for variable in clause if self.eval_variable(variable) == UNASSIGNED]
+        if len(unassigned_variables) == 1:
+            return unassigned_variables.pop()
+
+        return None

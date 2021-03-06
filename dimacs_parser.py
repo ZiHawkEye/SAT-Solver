@@ -62,7 +62,7 @@ def parse_cnf(lines):
     return (n_vars, n_clauses)
 
 def parse_formula(lines, n_vars):
-    formula = set()
+    formula = []
 
     for i in range(2, len(lines)):
         tokens = lines[i].strip().split()
@@ -81,10 +81,10 @@ def parse_formula(lines, n_vars):
                 # if not (abs(variable) <= n_vars):
                 #     raise FileFormatError("Exceeded number of variables specified.")
                 
-                clause.add(Variable(variable, UNASSIGNED)) # variable is an integer, with a negative integer denoting a negation of the variable
+                clause.add(variable) # variable is an integer, with a negative integer denoting a negation of the variable
         except ValueError as e:
             print("Error, variable should be a nonzero number.")
             
-        formula.add(Clause(clause))
+        formula.append(clause)
 
-    return Formula(formula)
+    return formula

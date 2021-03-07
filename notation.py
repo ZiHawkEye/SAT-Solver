@@ -49,6 +49,13 @@ class Formula(object):
                 return clause
         return None
 
+    def find_all_undecided_clauses(self, assignment):
+        undecided_clauses = []
+        for clause in self.clauses:
+            if clause.evaluate(assignment) == ENUM.UNDECIDED:
+                undecided_clauses.append(clause)
+        return undecided_clauses
+
 class Clause(object):
     def __init__(self, literals):
         self.literals = literals  # set of literals

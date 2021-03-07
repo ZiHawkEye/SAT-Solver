@@ -1,10 +1,11 @@
 """
 Defines SAT solver.
 """
-import copy
+from config import Config, PickBranchHeuristics, ConflictAnalysisHeuristics
 from notation import Formula, Clause, Literal
 from enums import ENUM
-
+import sys
+import random
 """
     Antecedent clauses are the clauses that caused a literal to be implied / forced to become a single value.
     Example: f = (x_1 v x_2 v -x_3) ^ (x_4 v -x_5 v -x_6), then antecedent(x_1) = (x_1 v x_2 v -x_3) if and only if
@@ -51,7 +52,7 @@ class Solver:
             if self.formula.evaluate(assignment) == ENUM.UNSAT:
                 if self.decision_level == 0:
                     return assignment, ENUM.UNSAT
-                conflict_clause = self.conflict_analysis(self.formula, assignment, trail)
+                conflict_clause = self.one_uip_conflict_analysis(self.formula, assignment, trail)
                 self.backtrack(conflict_clause, assignment, trail)  # Undo assignments
                 self.formula.clauses.add(conflict_clause)
 
@@ -90,14 +91,73 @@ class Solver:
 
     # todo pick literal and assign a value to it. - can try greedy
     def pick_branch(self, formula, assignment):
+        if Config.pick_branch_heuristic == PickBranchHeuristics.FIRST_VARIABLE:
+            return self.pick_first_branch(formula, assignment)
+        elif Config.pick_branch_heuristic == PickBranchHeuristics.RANDOM:
+            return self.random_pick_branch(formula, assignment)
+        elif Config.pick_branch_heuristic == PickBranchHeuristics.GREEDY:
+            return self.greedy_pick_branch(formula, assignment)
+        else:
+            print("Pick branch variable not chosen. Terminating program...")
+            sys.exit(1)
+
+    def pick_first_branch(self, formula, assignment):
         literal = self.get_next_unassigned_literal(assignment)
         return literal, 1
+
+    def random_pick_branch(self, formula, assignment):
+        undecided_literals = []
+        for literal, value in assignment.items():
+            if value == ENUM.UNDECIDED:
+                undecided_literals.append(literal)
+        random_literal = random.choice(undecided_literals)
+        random_value = random.choice([0, 1])
+        return random_literal, random_value
+
+    def greedy_pick_branch(self, formula, assignment):
+        undecided_clauses = formula.find_all_undecided_clauses(assignment) # list of clauses
+        if len(undecided_clauses) == 0: # Already satisfiable, can just assign the rest of the literals any value
+            return self.pick_first_branch(formula, assignment)
+        undecided_literals_dict = {literal: {0: 0, 1: 0} for
+                                   literal, value in assignment.items() if value == ENUM.UNDECIDED}
+        for clause in undecided_clauses:
+            for literal in clause.literals:
+                if literal.literal in undecided_literals_dict:
+                    if literal.is_negated:
+                        undecided_literals_dict[literal.literal][0] += 1
+                    else:
+                        undecided_literals_dict[literal.literal][1] += 1
+        literal_that_will_satisfy_largest_num_of_clauses = None
+        num_of_clauses_that_will_be_satisfied = 0
+        value = 0
+        for literal, sign_counts in undecided_literals_dict.items():
+            if sign_counts[0] < sign_counts[1]:
+                if sign_counts[1] > num_of_clauses_that_will_be_satisfied:
+                    num_of_clauses_that_will_be_satisfied = sign_counts[1]
+                    literal_that_will_satisfy_largest_num_of_clauses = literal
+                    value = 1
+            else:
+                if sign_counts[0] > num_of_clauses_that_will_be_satisfied:
+                    num_of_clauses_that_will_be_satisfied = sign_counts[0]
+                    literal_that_will_satisfy_largest_num_of_clauses = literal
+                    value = 0
+        return literal_that_will_satisfy_largest_num_of_clauses, value
 
     def build_implication_graph(self, trail):
         graph = {}
         for literal, value, antecedent_clause in trail:
             graph[literal] = antecedent_clause
         return graph
+
+    # proxy function
+    def conflict_analysis(self, formula, conflicting_assignment, trail):
+        if Config.conflict_analysis_heuristic == ConflictAnalysisHeuristics.GRASP:
+            return self.grasp_conflict_analysis(formula, conflicting_assignment, trail)
+        elif Config.conflict_analysis_heuristic == ConflictAnalysisHeuristics.ONE_UIP:
+            return self.one_uip_conflict_analysis(formula, conflicting_assignment, trail)
+        else:
+            print("Conflict analysis heuristic not selected. Terminating program...")
+            sys.exit(1)
 
     # Grasp conflict analysis
     def grasp_conflict_analysis(self, formula, conflicting_assignment, trail):
@@ -128,7 +188,7 @@ class Solver:
         return new_clause_to_add
 
     # 1-UIP conflict analysis follow trail backwards
-    def conflict_analysis(self, formula, conflicting_assignment, trail):
+    def one_uip_conflict_analysis(self, formula, conflicting_assignment, trail):
         unsat_clause = formula.find_first_unsat_clause(conflicting_assignment)
         conflict_clause = unsat_clause
 
@@ -148,11 +208,14 @@ class Solver:
             num_of_implied_literals_at_this_level = len(
                 [l for l in conflict_clause.literals if l.literal in literals_at_this_level])
             if num_of_implied_literals_at_this_level == 1:
-                break  # Reached 1-UIP point. This happens when the resolved clause has only one literal decided at this decision level
+                # Reached 1-UIP point. This happens when the resolved clause has
+                # only one literal decided at this decision level
+                break
             literal, value, antecedent_clause = trail[i]
             i = i - 1
             if literal not in {l.literal for l in conflict_clause.literals}:
-                continue # Irrelevant literal - does not cause the conflict clause
+                # Irrelevant literal - does not cause the conflict clause
+                continue
             if antecedent_clause is None:
                 continue
             conflict_clause = Clause.resolve(conflict_clause, antecedent_clause)

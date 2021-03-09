@@ -30,7 +30,7 @@ def dimacs_parse(input):
     if not (len(input) >= 2): 
         raise FileFormatError(parse_error_msg)
 
-    formula = Formula(set())
+    clauses = set()
     n_clauses = 0
     n_literals = 0
     for line in lines:
@@ -41,8 +41,8 @@ def dimacs_parse(input):
             n_literals, n_clauses = parse_cnf_args(line)
         else:
             clause = parse_clause(line)
-            formula.clauses.add(clause)
-    return formula, n_literals
+            clauses.add(clause)
+    return Formula(clauses, n_literals), n_literals
 
 
 def parse_cnf_args(line):
@@ -66,14 +66,14 @@ def parse_clause(line):
     tokens = line.strip().split()
     if not (tokens[-1] == "0"):
         raise FileFormatError("The last number in a clause should be 0.")
-    clause = Clause(set())
+    literals = set()
     try:
         for token in tokens:
             literal = int(token)
             if literal == 0:
                 break
-            clause.literals.add(Literal(token))
+            literals.add(Literal(token))
     except ValueError as e:
         print("Literal must be a non-zero number")
         return None
-    return clause
+    return Clause(literals)

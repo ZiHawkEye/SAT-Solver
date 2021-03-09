@@ -15,7 +15,7 @@ def test_parser_on_test_case_1():
     c2l3 = Literal("-1")
     clause2 = Clause({c2l1, c2l2, c2l3})
 
-    correct_formula = Formula({clause1, clause2})
+    correct_formula = Formula({clause1, clause2}, 3)
     
     assert n_literals == 3
     assert formula == correct_formula

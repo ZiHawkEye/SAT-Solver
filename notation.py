@@ -6,8 +6,26 @@ Defines notation classes.
 
 
 class Formula(object):
-    def __init__(self, clauses):
+    def __init__(self, clauses, n_literals):
         self.clauses = clauses  # set of clauses
+        self.n_literals = n_literals
+        self.watch_list = {}
+        self.initialize_watch_list()
+        self.assignment = {i: ENUM.UNDECIDED for i in range(1, self.n_literals + 1)}  # Initially all unassigned
+
+    def initialize_watch_list(self):
+        for i in range(1, self.n_literals + 1):
+            self.watch_list[Literal(str(i))] = set()
+            self.watch_list[Literal(str(-i))] = set()
+        for clause in self.clauses:
+            for literal in clause.watched_literals:
+                self.watch_list[literal].add(clause)
+
+    def add_clause(self, clause):
+        if clause not in self.clauses:
+            self.clauses.add(clause)
+            for literal in clause.watched_literals:
+                self.watch_list[literal].add(clause)
 
     def to_string(self):
         formula_string = ", ".join([clause.to_string() for clause in self.clauses])
@@ -19,18 +37,176 @@ class Formula(object):
     def __eq__(self, other):
         return isinstance(other, Formula) and self.clauses == other.clauses
 
-    def evaluate(self, assignment):
-        value = min([clause.evaluate(assignment) for clause in self.clauses])
+    def set(self, literal_index, value):
+        remove_from_watch_list = []
+        add_to_watch_list = []
+        falsified_literal = Literal(str(literal_index) if value == 0 else str(-literal_index))
+        self.verify_integrity_of_watch_list()
+        self.assignment[literal_index] = value
+        for clause in self.watch_list[falsified_literal]:
+            if len(clause.watched_literals) < 2:
+                return
+            else:
+                # watch another literal
+                first_wl, second_wl = clause.watched_literals
+                next_unassigned_literal = None
+                index = 0
+                for j in range(len(clause.unwatched_literals)):
+                    unwatched_literal = clause.unwatched_literals[j]
+                    unwatched_status = unwatched_literal.evaluate(self.assignment)
+                    if unwatched_status == ENUM.SAT or unwatched_status == ENUM.UNDECIDED:
+                        next_unassigned_literal = unwatched_literal
+                        index = j
+                if first_wl == falsified_literal:
+                    if second_wl.evaluate(self.assignment) == ENUM.SAT:
+                        continue
+                    elif second_wl.evaluate(self.assignment) == ENUM.UNSAT and next_unassigned_literal is None:
+                        continue
+                    # second_wl is undecided
+                    # update first wl
+                    if next_unassigned_literal is not None:
+                        # swap
+                        remove_from_watch_list.append(clause)
+                        clause.watched_literals[0] = next_unassigned_literal
+                        clause.unwatched_literals[index] = first_wl
+                        add_to_watch_list.append((next_unassigned_literal, clause))
+                else:
+                    if first_wl.evaluate(self.assignment) == ENUM.SAT:
+                        continue
+                    elif first_wl.evaluate(self.assignment) == ENUM.UNSAT and next_unassigned_literal is None:
+                        continue
+                    # first_wl is undecided
+                    # update second wl
+                    if next_unassigned_literal is not None:
+                        # swap
+                        remove_from_watch_list.append(clause)
+                        clause.watched_literals[1] = next_unassigned_literal
+                        clause.unwatched_literals[index] = second_wl
+                        add_to_watch_list.append((next_unassigned_literal, clause))
+        for clause_to_remove in remove_from_watch_list:
+            self.watch_list[falsified_literal].remove(clause_to_remove)
+        for literal_to_add, clause_to_add in add_to_watch_list:
+            self.watch_list[literal_to_add].add(clause_to_add)
+
+    def unset(self, literal_index):
+        self.assignment[literal_index] = ENUM.UNDECIDED
+
+    def verify_integrity_of_watch_list(self):
+        if self.evaluate() == ENUM.UNSAT:
+            return
+        for literal, watched_clauses in self.watch_list.items():
+            for clause in watched_clauses:
+                if len(clause.watched_literals) < 2:
+                    status = clause.watched_literals[0].evaluate(self.assignment)
+                    if status == ENUM.SAT or status == ENUM.UNDECIDED:
+                        # ok
+                        continue
+                    else:
+                        print("unsat")
+                else:
+                    first_wl, second_wl = clause.watched_literals
+                    first_status = first_wl.evaluate(self.assignment)
+                    second_status = second_wl.evaluate(self.assignment)
+                    if first_status == ENUM.UNSAT and second_status == ENUM.UNSAT:
+                        unwatched_status = max([e.evaluate(self.assignment) for e in clause.unwatched_literals] + [0])
+                        if unwatched_status != ENUM.UNSAT:
+                            print("violated invariant")
+
+    def evaluate(self):
+        value = min([clause.evaluate(self.assignment) for clause in self.clauses])
         return value
 
-    def get_unit_clause_literal(self, assignment):
+    '''def get_unit_clause_literal(self, assignment, trail):
+        # return self.get_unit_clause_literal_slowly(assignment)
+        if len(trail) == 0:
+            return self.get_unit_clause_literal_slowly(assignment)
+        else:
+            return self.get_unit_clause_literal_lazily(assignment, trail)'''
+
+    # todo take into account recently added conflict clause to look for unit clause literals
+    def get_unit_clause_literal_lazily(self, assignment, trail, conflict_clause=None):
+        uc2, l2 = self.get_unit_clause_literal_slowly(assignment)
+        print(self.evaluate(assignment))
+        if len(trail) == 0:
+            return self.get_unit_clause_literal_slowly(assignment)
         unit_clause = None
         literal = None
-        if self.evaluate(assignment) == ENUM.CONFLICT:
+        remove_from_watch_list = []
+        add_to_watch_list = []
+        if conflict_clause is not None:
+            for literal in conflict_clause.literals:
+                if literal.evaluate(assignment) == ENUM.UNASSIGNED:
+                    return conflict_clause, literal
+        else:
+            previous_literal, value, antecedent_clause = trail[-1]
+            falsified_literal = Literal(str(previous_literal) if value == 0 else str(-previous_literal))
+            for clause in self.watch_list[falsified_literal]:
+                if len(clause.watched_literals) < 2:
+                    return None, None   # This clause is falsified
+                else:
+                    # watch another literal
+                    first_wl, second_wl = clause.watched_literals
+                    next_unassigned_literal = None
+                    index = 0
+                    already_sat = False
+                    for j in range(len(clause.unwatched_literals)):
+                        unwatched_literal = clause.unwatched_literals[j]
+                        unwatched_status = unwatched_literal.evaluate(assignment)
+                        if unwatched_status == ENUM.SAT:
+                            already_sat = True
+                        elif unwatched_status == ENUM.UNDECIDED:
+                            next_unassigned_literal = unwatched_literal
+                            index = j
+                    if already_sat:
+                        continue
+                    if first_wl == falsified_literal:
+                        if second_wl.evaluate(assignment) == ENUM.SAT:
+                            continue
+                        elif second_wl.evaluate(assignment) == ENUM.UNSAT:
+                            return None, None
+                        # second_wl is undecided
+                        # update first wl
+                        if next_unassigned_literal is not None:
+                            # swap
+                            remove_from_watch_list.append(clause)
+                            clause.watched_literals[0] = next_unassigned_literal
+                            clause.unwatched_literals[index] = first_wl
+                            add_to_watch_list.append((next_unassigned_literal, clause))
+                        else:
+                            # no unassigned next literal, second_wl forms the unit clause
+                            unit_clause = clause
+                            literal = second_wl
+                    else:
+                        if first_wl.evaluate(assignment) == ENUM.SAT:
+                            continue
+                        elif first_wl.evaluate(assignment) == ENUM.UNSAT:
+                            return None, None
+                        # first_wl is undecided
+                        # update second wl
+                        if next_unassigned_literal is not None:
+                            # swap
+                            remove_from_watch_list.append(clause)
+                            clause.watched_literals[1] = next_unassigned_literal
+                            clause.unwatched_literals[index] = second_wl
+                            add_to_watch_list.append((next_unassigned_literal, clause))
+                        else:
+                            # no unassigned next literal, first_wl forms the unit clause
+                            unit_clause = clause
+                            literal = first_wl
+            for clause_to_remove in remove_from_watch_list:
+                self.watch_list[falsified_literal].remove(clause_to_remove)
+            for literal_to_add, clause_to_add in add_to_watch_list:
+                self.watch_list[literal_to_add].add(clause_to_add)
+            return unit_clause, literal
+
+    def get_unit_clause_literal_slowly(self, trail):
+        unit_clause = None
+        literal = None
+        if self.evaluate() == ENUM.CONFLICT:
             return unit_clause, literal
         for clause in self.clauses:
             literal_list = list(clause.literals)
-            statuses = [literal.evaluate(assignment) for literal in literal_list]
+            statuses = [literal.evaluate(self.assignment) for literal in literal_list]
             status = max(statuses)
             undecided_literals_index = [index for index, value in enumerate(statuses) if value == ENUM.UNDECIDED]
             if status == ENUM.SAT:
@@ -41,24 +217,62 @@ class Formula(object):
                 unit_clause = clause
                 literal = literal_list[undecided_literals_index[0]]
                 break
+        ks = self.watch_list
         return unit_clause, literal
 
-    def find_first_unsat_clause(self, assignment):
+    def get_unit_clause_literal_slowly_2(self, trail):
+        unit_clause = None
+        literal = None
+        uc2, l2 = self.get_unit_clause_literal_slowly(trail)
+        a = self.assignment
+        s = self.evaluate()
+        for wl, watched_clauses in self.watch_list.items():
+            for watched_clause in watched_clauses:
+                if len(watched_clause.literals) == 1:
+                    if watched_clause.watched_literals[0].evaluate(self.assignment) == ENUM.UNDECIDED:
+                        print("HERE")
+                        return watched_clause, wl
+                else:
+                    first_wl, second_wl = watched_clause.watched_literals
+                    first_status = first_wl.evaluate(self.assignment)
+                    second_status = second_wl.evaluate(self.assignment)
+                    if first_status == ENUM.SAT or second_status == ENUM.SAT:
+                        continue
+                    elif first_status == ENUM.UNSAT and second_status == ENUM.UNSAT:
+                        return None, None
+                    elif first_status == ENUM.UNDECIDED and second_status == ENUM.UNDECIDED:
+                        continue
+                    else:
+                        # unit clause
+                        unit_clause = watched_clause
+                        if first_status == ENUM.UNDECIDED:
+                            literal = first_wl
+                        else:
+                            literal = second_wl
+        if unit_clause != uc2:
+            print("not equals!")
+        return unit_clause, literal
+
+    def find_first_unsat_clause(self):
         for clause in self.clauses:
-            if clause.evaluate(assignment) == ENUM.UNSAT:
+            if clause.evaluate(self.assignment) == ENUM.UNSAT:
                 return clause
         return None
 
-    def find_all_undecided_clauses(self, assignment):
+    def find_all_undecided_clauses(self):
         undecided_clauses = []
         for clause in self.clauses:
-            if clause.evaluate(assignment) == ENUM.UNDECIDED:
+            if clause.evaluate(self.assignment) == ENUM.UNDECIDED:
                 undecided_clauses.append(clause)
         return undecided_clauses
 
+
 class Clause(object):
     def __init__(self, literals):
-        self.literals = literals  # set of literals
+        self.literals = frozenset(literals)  # set of literals
+        literal_list = list(literals)
+        self.watched_literals = literal_list[0:2]   # pick the first two literals to be watched
+        self.unwatched_literals = literal_list[2:]  # remaining
 
     def to_string(self):
         return "(" + ", ".join([literal.to_string() for literal in self.literals]) + ")"
@@ -67,7 +281,7 @@ class Clause(object):
         return self.to_string()
 
     def __hash__(self):
-        return hash((l.to_string() for l in self.literals))
+        return hash(self.literals)
 
     def __eq__(self, other):
         return isinstance(other, Clause) and self.literals == other.literals
@@ -77,6 +291,35 @@ class Clause(object):
             return 0
         statuses = [literal.evaluate(assignment) for literal in self.literals]
         return max(statuses)
+
+    def adjust_watched_literals(self, assignment):
+        # adjust the clause's watched literals
+        remove_from_watch_list = []
+        add_to_watch_list = []
+        if len(self.watched_literals) == 2:
+            if self.watched_literals[0].evaluate(assignment) == ENUM.UNSAT:
+                index = 0
+                for unwatched in self.unwatched_literals:
+                    if unwatched.evaluate(assignment) == ENUM.UNDECIDED:
+                        # swap
+                        remove_from_watch_list.append(self.watched_literals[0])
+                        add_to_watch_list.append(unwatched)
+                        self.unwatched_literals[index] = self.watched_literals[0]
+                        self.watched_literals[0] = unwatched
+                        break
+                    index += 1
+            if self.watched_literals[1].evaluate(assignment) == ENUM.UNSAT:
+                index = 0
+                for unwatched in self.unwatched_literals:
+                    if unwatched.evaluate(assignment) == ENUM.UNDECIDED:
+                        # swap
+                        remove_from_watch_list.append(self.watched_literals[1])
+                        add_to_watch_list.append(unwatched)
+                        self.unwatched_literals[index] = self.watched_literals[1]
+                        self.watched_literals[1] = unwatched
+                        break
+                    index += 1
+        return remove_from_watch_list, add_to_watch_list
 
     def remove_trivial_literals(self):
         updated_literal_set = set()
@@ -101,20 +344,20 @@ class Clause(object):
 class Literal(object):
     def __init__(self, dimacs_literal_format):
         literal = int(dimacs_literal_format)
-        self.literal = abs(literal)
+        self.index = abs(literal)
         self.is_negated = literal < 0
 
     def to_string(self):
-        return str(-1 * self.literal) if self.is_negated else str(self.literal)
+        return str(-1 * self.index) if self.is_negated else str(self.index)
 
     def __str__(self):
-        return str(-1 * self.literal) if self.is_negated else str(self.literal)
+        return str(-1 * self.index) if self.is_negated else str(self.index)
 
     def __hash__(self):
         return hash(self.to_string())
 
     def __eq__(self, other):
-        return isinstance(other, Literal) and self.literal == other.literal and self.is_negated == other.is_negated
+        return isinstance(other, Literal) and self.index == other.index and self.is_negated == other.is_negated
 
     def __neg__(self):
         string_form = self.to_string()
@@ -122,7 +365,13 @@ class Literal(object):
         return Literal(negated_string_form)
 
     def evaluate(self, assignment):
-        value = assignment[self.literal]
+        value = assignment[self.index]
+        if self.is_negated:
+            return 1 - value
+        else:
+            return value
+
+    def evaluate_by_value(self, value):
         if self.is_negated:
             return 1 - value
         else:

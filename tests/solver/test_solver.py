@@ -12,7 +12,7 @@ def test_solver_on_test_case_1():
     solver = Solver(formula, n_literals)
     assignment, sat_result = solver.cdcl_solve()
     assert sat_result == ENUM.SAT
-    assert formula.evaluate(assignment) == ENUM.SAT
+    assert formula.evaluate() == ENUM.SAT
 
 def test_solver_on_test_case_2():
     with open(os.path.join(os.getcwd(), "tests/test_cases/test_case_2.txt")) as f:
@@ -23,7 +23,7 @@ def test_solver_on_test_case_2():
     assignment, sat_result = solver.cdcl_solve()
     assert sat_result == ENUM.SAT
     assert solver.num_of_unit_prop_calls == 1
-    assert formula.evaluate(assignment) == ENUM.SAT
+    assert formula.evaluate() == ENUM.SAT
 
 def test_solver_on_test_case3():
     with open(os.path.join(os.getcwd(), "tests/test_cases/test_case_3.txt")) as f:
@@ -33,7 +33,7 @@ def test_solver_on_test_case3():
     solver = Solver(formula, n_literals)
     assignment, sat_result = solver.cdcl_solve()
     assert sat_result == ENUM.SAT
-    assert formula.evaluate(assignment) == ENUM.SAT
+    assert formula.evaluate() == ENUM.SAT
 
 '''
 # This test case currently takes too long. :/
@@ -56,7 +56,7 @@ def test_solver_on_test_case5():
     solver = Solver(formula, n_literals)
     assignment, sat_result = solver.cdcl_solve()
     assert sat_result == ENUM.SAT
-    assert formula.evaluate(assignment) == ENUM.SAT
+    assert formula.evaluate() == ENUM.SAT
 
 def test_solver_on_test_case6():
     with open(os.path.join(os.getcwd(), "tests/test_cases/test_case_6.txt")) as f:
@@ -66,7 +66,7 @@ def test_solver_on_test_case6():
     solver = Solver(formula, n_literals)
     assignment, sat_result = solver.cdcl_solve()
     assert sat_result == ENUM.SAT
-    assert formula.evaluate(assignment) == ENUM.SAT
+    assert formula.evaluate() == ENUM.SAT
 
 def test_solver_on_test_case7():
     with open(os.path.join(os.getcwd(), "tests/test_cases/test_case_7.txt")) as f:
@@ -76,4 +76,4 @@ def test_solver_on_test_case7():
     solver = Solver(formula, n_literals)
     assignment, sat_result = solver.cdcl_solve()
     assert sat_result == ENUM.SAT
-    assert formula.evaluate(assignment) == ENUM.SAT
+    assert formula.evaluate() == ENUM.SAT

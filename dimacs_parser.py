@@ -33,8 +33,11 @@ def dimacs_parse(input):
     formula = Formula(set())
     n_clauses = 0
     n_literals = 0
+    j = 0
     for line in lines:
         line = line.strip()
+        if j == n_clauses and n_clauses != 0:
+            break
         if line[0] == 'c':
             continue
         elif line[0] == 'p':
@@ -42,6 +45,7 @@ def dimacs_parse(input):
         else:
             clause = parse_clause(line)
             formula.clauses.add(clause)
+            j += 1
     return formula, n_literals
 
 

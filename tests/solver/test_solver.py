@@ -77,3 +77,13 @@ def test_solver_on_test_case7():
     assignment, sat_result = solver.cdcl_solve()
     assert sat_result == ENUM.SAT
     assert formula.evaluate(assignment) == ENUM.SAT
+
+def test_solver_on_uf20_test_case8():
+    for i in range(9, 190):
+        with open(os.path.join(os.getcwd(), "tests/test_cases/uf20-0{}.cnf".format(i))) as f:
+            test_case = f.read()
+        formula, n_literals = dimacs_parse(test_case)
+        solver = Solver(formula, n_literals)
+        assignment, sat_result = solver.cdcl_solve()
+        assert sat_result == ENUM.SAT
+        assert formula.evaluate(assignment) == ENUM.SAT

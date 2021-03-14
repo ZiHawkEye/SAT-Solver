@@ -4,7 +4,7 @@ import os
 
 
 def main():
-    with open(os.path.join(os.getcwd(), "tests/test_cases/test_case_7.txt")) as f:
+    with open(os.path.join(os.getcwd(), "tests/test_cases/test_case_4.txt")) as f:
         test_case = f.read()
     formula, n_literals = dimacs_parse(test_case)
     solver = Solver(formula, n_literals)

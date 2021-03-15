@@ -69,13 +69,12 @@ class Solver:
     def pick_branch(self, formula, assignment):
         if Config.pick_branch_heuristic == PickBranchHeuristics.FIRST_VARIABLE:
             return self.pick_first_branch(formula, assignment)
-        elif Config.pick_branch_heuristic == PickBranchHeuristics.RANDOM:
-            return self.random_pick_branch(formula, assignment)
-        elif Config.pick_branch_heuristic == PickBranchHeuristics.GREEDY:
+        if Config.pick_branch_heuristic == PickBranchHeuristics.GREEDY:
             return self.greedy_pick_branch(formula, assignment)
-        else:
-            print("Pick branch variable not chosen. Terminating program...")
-            sys.exit(1)
+        if Config.pick_branch_heuristic == PickBranchHeuristics.RANDOM:
+            return self.random_pick_branch(formula, assignment)
+        print("Pick branch variable not chosen. Terminating program...")
+        sys.exit(1)
 
     def pick_first_branch(self, formula, assignment):
         literal = self.get_next_unassigned_literal(assignment)
@@ -127,13 +126,12 @@ class Solver:
 
     # proxy function
     def conflict_analysis(self, formula, conflicting_assignment, trail):
+        if Config.conflict_analysis_heuristic == ConflictAnalysisHeuristics.ONE_UIP:
+            return self.one_uip_conflict_analysis(formula, conflicting_assignment, trail)
         if Config.conflict_analysis_heuristic == ConflictAnalysisHeuristics.GRASP:
             return self.grasp_conflict_analysis(formula, conflicting_assignment, trail)
-        elif Config.conflict_analysis_heuristic == ConflictAnalysisHeuristics.ONE_UIP:
-            return self.one_uip_conflict_analysis(formula, conflicting_assignment, trail)
-        else:
-            print("Conflict analysis heuristic not selected. Terminating program...")
-            sys.exit(1)
+        print("Conflict analysis heuristic not selected. Terminating program...")
+        sys.exit(1)
 
     # Grasp conflict analysis
     def grasp_conflict_analysis(self, formula, conflicting_assignment, trail):

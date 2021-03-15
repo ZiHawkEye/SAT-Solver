@@ -12,3 +12,4 @@ class ConflictAnalysisHeuristics:
 class Config:
     pick_branch_heuristic = PickBranchHeuristics.GREEDY
     conflict_analysis_heuristic = ConflictAnalysisHeuristics.ONE_UIP
+    test_case = "test_case_7.txt"

@@ -101,20 +101,20 @@ class Clause(object):
 class Literal(object):
     def __init__(self, dimacs_literal_format):
         literal = int(dimacs_literal_format)
-        self.literal = abs(literal)
+        self.index = abs(literal)
         self.is_negated = literal < 0
 
     def to_string(self):
-        return str(-1 * self.literal) if self.is_negated else str(self.literal)
+        return str(-1 * self.index) if self.is_negated else str(self.index)
 
     def __str__(self):
-        return str(-1 * self.literal) if self.is_negated else str(self.literal)
+        return str(-1 * self.index) if self.is_negated else str(self.index)
 
     def __hash__(self):
         return hash(self.to_string())
 
     def __eq__(self, other):
-        return isinstance(other, Literal) and self.literal == other.literal and self.is_negated == other.is_negated
+        return isinstance(other, Literal) and self.index == other.index and self.is_negated == other.is_negated
 
     def __neg__(self):
         string_form = self.to_string()
@@ -122,7 +122,7 @@ class Literal(object):
         return Literal(negated_string_form)
 
     def evaluate(self, assignment):
-        value = assignment[self.literal]
+        value = assignment[self.index]
         if self.is_negated:
             return 1 - value
         else:

@@ -10,7 +10,7 @@ class ConflictAnalysisHeuristics:
 
 
 class Config:
-    pick_branch_heuristic = PickBranchHeuristics.FIRST_VARIABLE
+    pick_branch_heuristic = PickBranchHeuristics.RANDOM
     conflict_analysis_heuristic = ConflictAnalysisHeuristics.ONE_UIP
-    test_case = "test_case_7.txt"
+    test_case = "einstein.cnf"
     num_of_times_to_run = 1

@@ -2,6 +2,7 @@ from dimacs_parser import *
 from solver import Solver
 from config import Config
 import os, time
+from einstein import show_assignment
 
 def main():
     print("Solver configurations for {}: ".format(Config.test_case))
@@ -29,6 +30,7 @@ def main():
     print("Trial times: {}".format(time_taken_list))
     print("Average time taken over {} trials: {} seconds".format(Config.num_of_times_to_run,
                                                                  sum(time_taken_list) / Config.num_of_times_to_run))
+    show_assignment(assignment)
 
 
 if __name__ == "__main__":

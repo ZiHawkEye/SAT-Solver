@@ -45,7 +45,7 @@ class Formula(object):
         self.assignment[literal_index] = value
         for clause in self.watch_list[falsified_literal]:
             if len(clause.watched_literals) < 2:
-                return
+                continue
             else:
                 # watch another literal
                 first_wl, second_wl = clause.watched_literals
@@ -58,10 +58,10 @@ class Formula(object):
                         next_unassigned_literal = unwatched_literal
                         index = j
                 if first_wl == falsified_literal:
-                    if second_wl.evaluate(self.assignment) == ENUM.SAT:
+                    '''if second_wl.evaluate(self.assignment) == ENUM.SAT:
                         continue
                     elif second_wl.evaluate(self.assignment) == ENUM.UNSAT and next_unassigned_literal is None:
-                        continue
+                        continue'''
                     # second_wl is undecided
                     # update first wl
                     if next_unassigned_literal is not None:
@@ -71,10 +71,10 @@ class Formula(object):
                         clause.unwatched_literals[index] = first_wl
                         add_to_watch_list.append((next_unassigned_literal, clause))
                 else:
-                    if first_wl.evaluate(self.assignment) == ENUM.SAT:
+                    '''if first_wl.evaluate(self.assignment) == ENUM.SAT:
                         continue
                     elif first_wl.evaluate(self.assignment) == ENUM.UNSAT and next_unassigned_literal is None:
-                        continue
+                        continue'''
                     # first_wl is undecided
                     # update second wl
                     if next_unassigned_literal is not None:
@@ -97,7 +97,7 @@ class Formula(object):
         for literal, watched_clauses in self.watch_list.items():
             for clause in watched_clauses:
                 if len(clause.watched_literals) < 2:
-                    status = clause.watched_literals[0].evaluate(self.assignment)
+                    status = literal.evaluate(self.assignment)
                     if status == ENUM.SAT or status == ENUM.UNDECIDED:
                         # ok
                         continue
@@ -111,6 +111,10 @@ class Formula(object):
                         unwatched_status = max([e.evaluate(self.assignment) for e in clause.unwatched_literals] + [0])
                         if unwatched_status != ENUM.UNSAT:
                             print("violated invariant")
+                    if first_status == ENUM.UNSAT or second_status == ENUM.UNSAT:
+                        unwatched_status = max([e.evaluate(self.assignment) for e in clause.unwatched_literals] + [0])
+                        if unwatched_status != ENUM.UNSAT:
+                            print("violation {}".format(str(clause)))
 
     def evaluate(self):
         value = min([clause.evaluate(self.assignment) for clause in self.clauses])
@@ -125,8 +129,6 @@ class Formula(object):
 
     # todo take into account recently added conflict clause to look for unit clause literals
     def get_unit_clause_literal_lazily(self, assignment, trail, conflict_clause=None):
-        uc2, l2 = self.get_unit_clause_literal_slowly(assignment)
-        print(self.evaluate(assignment))
         if len(trail) == 0:
             return self.get_unit_clause_literal_slowly(assignment)
         unit_clause = None
@@ -217,21 +219,17 @@ class Formula(object):
                 unit_clause = clause
                 literal = literal_list[undecided_literals_index[0]]
                 break
-        ks = self.watch_list
         return unit_clause, literal
 
     def get_unit_clause_literal_slowly_2(self, trail):
         unit_clause = None
         literal = None
-        uc2, l2 = self.get_unit_clause_literal_slowly(trail)
-        a = self.assignment
-        s = self.evaluate()
         for wl, watched_clauses in self.watch_list.items():
             for watched_clause in watched_clauses:
                 if len(watched_clause.literals) == 1:
-                    if watched_clause.watched_literals[0].evaluate(self.assignment) == ENUM.UNDECIDED:
-                        print("HERE")
-                        return watched_clause, wl
+                    if wl.evaluate(self.assignment) == ENUM.UNDECIDED:
+                        unit_clause = watched_clause
+                        literal = wl
                 else:
                     first_wl, second_wl = watched_clause.watched_literals
                     first_status = first_wl.evaluate(self.assignment)
@@ -249,8 +247,6 @@ class Formula(object):
                             literal = first_wl
                         else:
                             literal = second_wl
-        if unit_clause != uc2:
-            print("not equals!")
         return unit_clause, literal
 
     def find_first_unsat_clause(self):
@@ -294,32 +290,19 @@ class Clause(object):
 
     def adjust_watched_literals(self, assignment):
         # adjust the clause's watched literals
-        remove_from_watch_list = []
-        add_to_watch_list = []
-        if len(self.watched_literals) == 2:
-            if self.watched_literals[0].evaluate(assignment) == ENUM.UNSAT:
-                index = 0
-                for unwatched in self.unwatched_literals:
-                    if unwatched.evaluate(assignment) == ENUM.UNDECIDED:
-                        # swap
-                        remove_from_watch_list.append(self.watched_literals[0])
-                        add_to_watch_list.append(unwatched)
-                        self.unwatched_literals[index] = self.watched_literals[0]
-                        self.watched_literals[0] = unwatched
-                        break
-                    index += 1
-            if self.watched_literals[1].evaluate(assignment) == ENUM.UNSAT:
-                index = 0
-                for unwatched in self.unwatched_literals:
-                    if unwatched.evaluate(assignment) == ENUM.UNDECIDED:
-                        # swap
-                        remove_from_watch_list.append(self.watched_literals[1])
-                        add_to_watch_list.append(unwatched)
-                        self.unwatched_literals[index] = self.watched_literals[1]
-                        self.watched_literals[1] = unwatched
-                        break
-                    index += 1
-        return remove_from_watch_list, add_to_watch_list
+        literal_list = list(self.literals)
+        self.watched_literals = []
+        self.unwatched_literals = []
+        for literal in literal_list:
+            if len(self.watched_literals) == 2:
+                self.unwatched_literals.append(literal)
+            else:
+                status = literal.evaluate(assignment)
+                if status == ENUM.UNDECIDED or status == ENUM.SAT:
+                    self.watched_literals.append(literal)
+                else:
+                    self.unwatched_literals.append(literal)
+
 
     def remove_trivial_literals(self):
         updated_literal_set = set()

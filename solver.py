@@ -60,6 +60,7 @@ class Solver:
                 self.decision_level += 1
                 literal, value = self.pick_branch()  # Pick a literal and assign it a value
                 trail.append((literal, value, None))  # Literal, Assigned Value and Antecedent Clause
+                # print(trail)
                 self.formula.set(literal, value)
 
     def get_next_unassigned_literal(self):
@@ -75,6 +76,7 @@ class Solver:
     def unit_propagate(self, formula, trail):
         self.num_of_unit_prop_calls += 1  # just to keep track and debug
         unit_clause, literal = formula.get_unit_clause_literal_slowly(trail)
+        # uc2, lt2 = formula.get_unit_clause_literal_slowly(trail)
         while literal is not None:
             # update assignment
             if literal.is_negated:
@@ -83,6 +85,7 @@ class Solver:
             else:
                 self.formula.set(literal.index, 1)  # Assign 1 to literal
                 trail.append((literal.index, 1, unit_clause))
+            # print(trail)
             unit_clause, literal = formula.get_unit_clause_literal_slowly(trail)
         return trail
 
@@ -230,6 +233,7 @@ class Solver:
             if antecedent is None:
                 self.decision_level = self.decision_level - 1
                 conflict_clause.adjust_watched_literals(self.formula.assignment)
-                print(conflict_clause)
+                # print(conflict_clause)
                 if flag:
+                    # print('backtracked: {}'.format(trail))
                     break

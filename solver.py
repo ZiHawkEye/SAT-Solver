@@ -48,7 +48,7 @@ class Solver:
         trail = []  # Additional stack to keep track of assignments and implication graph
         while True:
             trail = self.unit_propagate(self.formula, trail)
-            if self.formula.evaluate() == ENUM.UNSAT:
+            if self.formula.evaluate_quick(trail) == ENUM.UNSAT:
                 if self.decision_level == 0:
                     return self.formula.assignment, ENUM.UNSAT
                 conflict_clause = self.one_uip_conflict_analysis(self.formula, trail)

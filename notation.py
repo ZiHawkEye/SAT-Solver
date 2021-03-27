@@ -118,6 +118,19 @@ class Formula(object):
         value = min([clause.evaluate(self.assignment) for clause in self.clauses])
         return value
 
+    def evaluate_quick(self, trail):
+        trail_len = len(trail)
+        for literal, value, antecedent_clause in trail:
+            falsified_literal = Literal(str(literal) if value == 0 else str(-literal))
+            for clause in self.watch_list[falsified_literal]:
+                lazy_clause_status = max([l.evaluate(self.assignment) for l in clause.watched_literals])
+                if lazy_clause_status == ENUM.UNSAT:
+                    return ENUM.UNSAT
+        if trail_len < self.n_literals:
+            return ENUM.UNDECIDED
+        else:
+            return ENUM.SAT
+
     '''def get_unit_clause_literal(self, assignment, trail):
         # return self.get_unit_clause_literal_slowly(assignment)
         if len(trail) == 0:
@@ -200,7 +213,7 @@ class Formula(object):
             return unit_clause, literal
 
     def get_unit_clause_literal_lazily_2(self, trail):
-        if self.evaluate() == ENUM.UNSAT:
+        if self.evaluate_quick(trail) == ENUM.UNSAT:
             return None, None
         for i in range(len(trail) - 1, -1, -1):
             literal, value, antecedent_clause = trail[i]
@@ -219,6 +232,8 @@ class Formula(object):
                             return clause, second_wl
                         else:
                             return clause, first_wl
+            if antecedent_clause is None:
+                break
         return None, None
 
     def get_unit_clause_literal_slowly(self, trail):

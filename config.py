@@ -12,5 +12,5 @@ class ConflictAnalysisHeuristics:
 class Config:
     pick_branch_heuristic = PickBranchHeuristics.GREEDY
     conflict_analysis_heuristic = ConflictAnalysisHeuristics.ONE_UIP
-    test_case = "test_case_4.txt"
+    test_case = "uuf150-01.cnf"
     num_of_times_to_run = 1

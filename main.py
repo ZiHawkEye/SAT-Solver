@@ -13,7 +13,7 @@ def main():
     print("\n".join(sat_paths))    
     print("\n".join(unsat_paths))
 
-    path = sat_paths[4]
+    path = sat_paths[0]
     
     with open(os.path.join(os.getcwd(), path)) as f:
         test_case = f.read()

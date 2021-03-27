@@ -1,8 +1,8 @@
 """
 Helper functions for parsing DIMACS CNF file.
 """
+from constants import *
 from exceptions import *
-from notation import *
 
 def dimacs_parse(input):
     """
@@ -85,6 +85,6 @@ def parse_formula(lines, n_vars):
         except ValueError as e:
             print("Error, variable should be a nonzero number.")
             
-        formula.append(clause)
+        formula.append(frozenset(clause))
 
     return formula

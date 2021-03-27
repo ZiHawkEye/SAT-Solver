@@ -75,8 +75,8 @@ class Solver:
     # Should just modify both assignment and trail directly
     def unit_propagate(self, formula, trail):
         self.num_of_unit_prop_calls += 1  # just to keep track and debug
-        unit_clause, literal = formula.get_unit_clause_literal_slowly(trail)
-        # uc2, lt2 = formula.get_unit_clause_literal_slowly(trail)
+        unit_clause, literal = formula.get_unit_clause_literal_slowly_2(trail)
+        uc2, lt2 = formula.get_unit_clause_literal_slowly(trail)
         while literal is not None:
             # update assignment
             if literal.is_negated:
@@ -232,8 +232,8 @@ class Solver:
 
             if antecedent is None:
                 self.decision_level = self.decision_level - 1
-                conflict_clause.adjust_watched_literals(self.formula.assignment)
-                # print(conflict_clause)
+                conflict_clause.adjust_watched_literals(self.formula.assignment, trail)
+                print(conflict_clause)
                 if flag:
-                    # print('backtracked: {}'.format(trail))
+                    print('backtracked: {}'.format(trail))
                     break

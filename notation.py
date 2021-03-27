@@ -101,8 +101,6 @@ class Formula(object):
                     if status == ENUM.SAT or status == ENUM.UNDECIDED:
                         # ok
                         continue
-                    else:
-                        print("unsat")
                 else:
                     first_wl, second_wl = clause.watched_literals
                     first_status = first_wl.evaluate(self.assignment)
@@ -226,7 +224,7 @@ class Formula(object):
         literal = None
         for wl, watched_clauses in self.watch_list.items():
             for watched_clause in watched_clauses:
-                if len(watched_clause.literals) == 1:
+                if len(watched_clause.watched_literals) == 1:
                     if wl.evaluate(self.assignment) == ENUM.UNDECIDED:
                         unit_clause = watched_clause
                         literal = wl
@@ -288,7 +286,7 @@ class Clause(object):
         statuses = [literal.evaluate(assignment) for literal in self.literals]
         return max(statuses)
 
-    def adjust_watched_literals(self, assignment):
+    def adjust_watched_literals(self, assignment, trail):
         # adjust the clause's watched literals
         literal_list = list(self.literals)
         self.watched_literals = []
@@ -302,6 +300,19 @@ class Clause(object):
                     self.watched_literals.append(literal)
                 else:
                     self.unwatched_literals.append(literal)
+        if len(literal_list) > 1 and len(self.watched_literals) < 2:
+            # print([str(l) for l in self.watched_literals], [str(p) for p in self.unwatched_literals])
+            # bring the most recent unwatched literal to watch list
+            for j in range(len(trail) - 1, -1, -1):
+                literal_index, value, antecedent_clause = trail[j]
+                for uw_l in self.unwatched_literals:
+                    if uw_l.index == literal_index:
+                        print(uw_l.index, literal_index)
+                        self.watched_literals.append(uw_l)
+                        self.unwatched_literals.remove(uw_l)
+                        print([str(l) for l in self.watched_literals], [str(p) for p in self.unwatched_literals])
+                        return
+
 
 
     def remove_trivial_literals(self):

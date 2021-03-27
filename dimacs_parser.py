@@ -39,6 +39,8 @@ def dimacs_parse(input):
             continue
         elif line[0] == 'p':
             n_literals, n_clauses = parse_cnf_args(line)
+        elif line[0] == '%':
+            break
         else:
             clause = parse_clause(line)
             clauses.add(clause)

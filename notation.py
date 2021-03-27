@@ -118,6 +118,9 @@ class Formula(object):
         value = min([clause.evaluate(self.assignment) for clause in self.clauses])
         return value
 
+    def evaluate_assignment(self, assignment):
+        return min([max([lit.evaluate(assignment) for lit in clause.literals]) for clause in self.clauses])
+
     def evaluate_quick(self, trail):
         trail_len = len(trail)
         for literal, value, antecedent_clause in trail:

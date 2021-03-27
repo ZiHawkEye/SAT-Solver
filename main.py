@@ -9,6 +9,7 @@ def main():
     print("PickBranch Heuristic: {}".format(Config.pick_branch_heuristic))
     print("Conflict Analysis Heuristic: {}".format(Config.conflict_analysis_heuristic))
     time_taken_list = []
+    sat_results = []
     if Config.num_of_times_to_run < 1:
         print("Number of times to run cannot be less than 1")
         return
@@ -22,12 +23,14 @@ def main():
         assignment, sat_result = solver.cdcl_solve()
         end_time = time.time()
         time_taken_list.append(end_time - start_time)
+        sat_results.append(sat_result)
         print("Trial #{} done...".format(i + 1))
     print("{} is {}".format(Config.test_case, "SAT" if sat_result == ENUM.SAT else "UNSAT"))
     print("Assignment: {}".format(assignment))
     print("Number of unit propagations: {}".format(solver.num_of_unit_prop_calls))
     print("Number of clauses added from CDCL: {}".format(len(solver.formula.clauses) - original_num_clauses))
     print("Trial times: {}".format(time_taken_list))
+    print("Sat results: {}".format(sat_results))
     print("Average time taken over {} trials: {} seconds".format(Config.num_of_times_to_run,
                                                                  sum(time_taken_list) / Config.num_of_times_to_run))
 

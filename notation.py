@@ -41,7 +41,7 @@ class Formula(object):
         remove_from_watch_list = []
         add_to_watch_list = []
         falsified_literal = Literal(str(literal_index) if value == 0 else str(-literal_index))
-        self.verify_integrity_of_watch_list()
+        # self.verify_integrity_of_watch_list()
         self.assignment[literal_index] = value
         for clause in self.watch_list[falsified_literal]:
             if len(clause.watched_literals) < 2:
@@ -199,6 +199,28 @@ class Formula(object):
                 self.watch_list[literal_to_add].add(clause_to_add)
             return unit_clause, literal
 
+    def get_unit_clause_literal_lazily_2(self, trail):
+        if self.evaluate() == ENUM.UNSAT:
+            return None, None
+        for i in range(len(trail) - 1, -1, -1):
+            literal, value, antecedent_clause = trail[i]
+            falsified_literal = Literal(str(literal) if value == 0 else str(-literal))
+            for clause in self.watch_list[falsified_literal]:
+                if len(clause.watched_literals) <= 1:
+                    return clause, clause.watched_literals[0]
+                else:
+                    first_wl, second_wl = clause.watched_literals
+                    first_status = first_wl.evaluate(self.assignment)
+                    second_status = second_wl.evaluate(self.assignment)
+                    if first_status == ENUM.SAT or second_status == ENUM.SAT:
+                        continue
+                    elif first_status == ENUM.UNSAT or second_status == ENUM.UNSAT:
+                        if first_status == ENUM.UNSAT:
+                            return clause, second_wl
+                        else:
+                            return clause, first_wl
+        return None, None
+
     def get_unit_clause_literal_slowly(self, trail):
         unit_clause = None
         literal = None
@@ -247,10 +269,16 @@ class Formula(object):
                             literal = second_wl
         return unit_clause, literal
 
-    def find_first_unsat_clause(self):
-        for clause in self.clauses:
+    def find_first_unsat_clause(self, trail):
+        for i in range(len(trail) - 1, -1, -1):
+            literal, value, antecedent_clause = trail[i]
+            falsified_literal = Literal(str(literal) if value == 0 else str(-literal))
+            for clause in self.watch_list[falsified_literal]:
+                if clause.evaluate(self.assignment) == ENUM.UNSAT:
+                    return clause
+        '''for clause in self.clauses:
             if clause.evaluate(self.assignment) == ENUM.UNSAT:
-                return clause
+                return clause'''
         return None
 
     def find_all_undecided_clauses(self):
@@ -283,7 +311,7 @@ class Clause(object):
     def evaluate(self, assignment):
         if len(self.literals) == 0:
             return 0
-        statuses = [literal.evaluate(assignment) for literal in self.literals]
+        statuses = [literal.evaluate(assignment) for literal in self.watched_literals]
         return max(statuses)
 
     def adjust_watched_literals(self, assignment, trail):
@@ -307,10 +335,10 @@ class Clause(object):
                 literal_index, value, antecedent_clause = trail[j]
                 for uw_l in self.unwatched_literals:
                     if uw_l.index == literal_index:
-                        print(uw_l.index, literal_index)
+                        # print(uw_l.index, literal_index)
                         self.watched_literals.append(uw_l)
                         self.unwatched_literals.remove(uw_l)
-                        print([str(l) for l in self.watched_literals], [str(p) for p in self.unwatched_literals])
+                        # print([str(l) for l in self.watched_literals], [str(p) for p in self.unwatched_literals])
                         return
 
 

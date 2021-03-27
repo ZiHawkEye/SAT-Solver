@@ -76,7 +76,6 @@ class Solver:
     def unit_propagate(self, formula, trail):
         self.num_of_unit_prop_calls += 1  # just to keep track and debug
         unit_clause, literal = formula.get_unit_clause_literal_slowly_2(trail)
-        uc2, lt2 = formula.get_unit_clause_literal_slowly(trail)
         while literal is not None:
             # update assignment
             if literal.is_negated:
@@ -86,7 +85,7 @@ class Solver:
                 self.formula.set(literal.index, 1)  # Assign 1 to literal
                 trail.append((literal.index, 1, unit_clause))
             # print(trail)
-            unit_clause, literal = formula.get_unit_clause_literal_slowly(trail)
+            unit_clause, literal = formula.get_unit_clause_literal_lazily_2(trail)
         return trail
 
     # todo pick literal and assign a value to it. - can try greedy
@@ -189,7 +188,7 @@ class Solver:
 
     # 1-UIP conflict analysis follow trail backwards
     def one_uip_conflict_analysis(self, formula, trail):
-        unsat_clause = formula.find_first_unsat_clause()
+        unsat_clause = formula.find_first_unsat_clause(trail)
         conflict_clause = unsat_clause
 
         literals_at_this_level = set()
@@ -233,7 +232,7 @@ class Solver:
             if antecedent is None:
                 self.decision_level = self.decision_level - 1
                 conflict_clause.adjust_watched_literals(self.formula.assignment, trail)
-                print(conflict_clause)
+                # print(conflict_clause)
                 if flag:
-                    print('backtracked: {}'.format(trail))
+                    # print('backtracked: {}'.format(trail))
                     break

@@ -6,7 +6,7 @@ from notation import Formula, Clause, Literal
 from enums import ENUM
 import sys
 import random
-import operator
+import heapq
 """
     Antecedent clauses are the clauses that caused a literal to be implied / forced to become a single value.
     Example: f = (x_1 v x_2 v -x_3) ^ (x_4 v -x_5 v -x_6), then antecedent(x_1) = (x_1 v x_2 v -x_3) if and only if
@@ -117,9 +117,13 @@ class Solver:
             sys.exit(1)
 
     def vsids_pick_branch(self):
-        for var, score in sorted(self.variable_scores.items(), key=lambda x : -x[1]):
+        pq = [(-v, k) for k, v in self.variable_scores.items()]
+        heapq.heapify(pq)
+        while len(pq) > 0:
+            score, var = heapq.heappop(pq)
             if self.formula.assignment[var] == ENUM.UNDECIDED:
                 return var, 0
+        return None, None
 
     def pick_first_branch(self):
         literal = self.get_next_unassigned_literal()

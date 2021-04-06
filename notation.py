@@ -239,6 +239,30 @@ class Formula(object):
                 break
         return None, None
 
+    def get_unit_clause_literal_lazily_3(self, trail, start_index):
+        if self.evaluate_quick(trail) == ENUM.UNSAT:
+            return None, None
+        for i in range(start_index, len(trail)):
+            literal, value, antecedent_clause = trail[i]
+            falsified_literal = Literal(str(literal) if value == 0 else str(-literal))
+            for clause in self.watch_list[falsified_literal]:
+                if len(clause.watched_literals) <= 1:
+                    return clause, clause.watched_literals[0]
+                else:
+                    first_wl, second_wl = clause.watched_literals
+                    first_status = first_wl.evaluate(self.assignment)
+                    second_status = second_wl.evaluate(self.assignment)
+                    if first_status == ENUM.SAT or second_status == ENUM.SAT:
+                        continue
+                    elif first_status == ENUM.UNSAT or second_status == ENUM.UNSAT:
+                        if first_status == ENUM.UNSAT:
+                            return clause, second_wl
+                        else:
+                            return clause, first_wl
+            if antecedent_clause is None:
+                break
+        return None, None
+
     def get_unit_clause_literal_slowly(self, trail):
         unit_clause = None
         literal = None

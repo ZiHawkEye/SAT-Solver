@@ -1,11 +1,12 @@
 """
 Defines SAT solver.
 """
-from config import Config, PickBranchHeuristics, ConflictAnalysisHeuristics
+from config import Config, PickBranchHeuristics, ConflictAnalysisHeuristics, VSIDSConfig
 from notation import Formula, Clause, Literal
 from enums import ENUM
 import sys
 import random
+import operator
 """
     Antecedent clauses are the clauses that caused a literal to be implied / forced to become a single value.
     Example: f = (x_1 v x_2 v -x_3) ^ (x_4 v -x_5 v -x_6), then antecedent(x_1) = (x_1 v x_2 v -x_3) if and only if
@@ -20,6 +21,11 @@ class Solver:
         self.formula = formula
         self.decision_level = 0
         self.num_of_unit_prop_calls = 0
+        self.variable_scores = {i: 0 for i in range(1, n_literals + 1)}
+        self.conflict_count = 0
+        for clause in self.formula.clauses:
+            for literal in clause.literals:
+                self.variable_scores[literal.index] += 1
 
     '''
     def dpll_solve(self):
@@ -53,6 +59,14 @@ class Solver:
                     return self.formula.assignment, ENUM.UNSAT
                 conflict_clause = self.one_uip_conflict_analysis(self.formula, trail)
                 self.backtrack(conflict_clause, trail)  # Undo assignments
+                # update variable records & decay if required
+                self.conflict_count += 1
+                if self.conflict_count >= VSIDSConfig.DECAY_TIME:
+                    self.conflict_count = 0
+                    for i in range(1, self.n_literals + 1):
+                        self.variable_scores[i] = self.variable_scores[i] / VSIDSConfig.MULTIPLICATIVE_DECAY_FACTOR
+                for var in conflict_clause.literals:
+                    self.variable_scores[var.index] += VSIDSConfig.CONFLICT_BUMP
                 self.formula.add_clause(conflict_clause)
             else:
                 if len(trail) == self.n_literals:
@@ -90,7 +104,9 @@ class Solver:
 
     # todo pick literal and assign a value to it. - can try greedy
     def pick_branch(self):
-        if Config.pick_branch_heuristic == PickBranchHeuristics.FIRST_VARIABLE:
+        if Config.pick_branch_heuristic == PickBranchHeuristics.VSIDS:
+            return self.vsids_pick_branch()
+        elif Config.pick_branch_heuristic == PickBranchHeuristics.FIRST_VARIABLE:
             return self.pick_first_branch()
         elif Config.pick_branch_heuristic == PickBranchHeuristics.RANDOM:
             return self.random_pick_branch()
@@ -99,6 +115,11 @@ class Solver:
         else:
             print("Pick branch variable not chosen. Terminating program...")
             sys.exit(1)
+
+    def vsids_pick_branch(self):
+        for var, score in sorted(self.variable_scores.items(), key=lambda x : -x[1]):
+            if self.formula.assignment[var] == ENUM.UNDECIDED:
+                return var, 0
 
     def pick_first_branch(self):
         literal = self.get_next_unassigned_literal()

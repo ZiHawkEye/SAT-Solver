@@ -17,5 +17,5 @@ class VSIDSConfig:
 class Config:
     pick_branch_heuristic = PickBranchHeuristics.VSIDS
     conflict_analysis_heuristic = ConflictAnalysisHeuristics.ONE_UIP
-    test_case = "uuf150-01.cnf"
-    num_of_times_to_run = 5
+    test_case = "hole7.cnf"
+    num_of_times_to_run = 1

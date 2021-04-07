@@ -1,5 +1,5 @@
 from dimacs_parser import *
-from solver import Solver
+from resolution_refutation import ResolutionRefutationSolver
 from config import Config
 import os, time
 
@@ -18,7 +18,7 @@ def main():
     for i in range(Config.num_of_times_to_run):
         formula, n_literals = dimacs_parse(test_case)
         original_num_clauses = len(formula.clauses)
-        solver = Solver(formula, n_literals)
+        solver = ResolutionRefutationSolver(formula, n_literals)
         start_time = time.time()
         assignment, sat_result = solver.cdcl_solve()
         end_time = time.time()
@@ -26,7 +26,10 @@ def main():
         sat_results.append(sat_result)
         print("Trial #{} done...".format(i + 1))
     print("{} is {}".format(Config.test_case, "SAT" if sat_result == ENUM.SAT else "UNSAT"))
-    print("Assignment: {}".format(assignment))
+    if sat_result == ENUM.SAT:
+        print("Assignment: {}".format(assignment))
+    else:
+        solver.clause_db.get_resolution_refutation()
     print("Number of unit propagations: {}".format(solver.num_of_unit_prop_calls))
     print("Number of clauses added from CDCL: {}".format(len(solver.formula.clauses) - original_num_clauses))
     print("Trial times: {}".format(time_taken_list))

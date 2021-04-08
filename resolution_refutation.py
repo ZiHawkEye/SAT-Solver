@@ -21,8 +21,9 @@ class ClauseDatabase:
     def __init__(self, clauses):
         # clause map stores clauses -> its index and how it was derived (via resolution)
         # clause index map stores index -> clause mapping
-        self.clause_map = {}
-        self.clause_index_map = {}
+        empty_clause = Clause.empty_clause()
+        self.clause_map = {empty_clause: (-1, [])}
+        self.clause_index_map = {-1: empty_clause}
         self.current_index = 0
         for clause in clauses:
             if clause not in self.clause_map:
@@ -71,6 +72,8 @@ class ClauseDatabase:
 
     def get_resolution_refutation(self):
         pos_u_clause, neg_u_clause = self.get_clauses_that_lead_to_box()
+        pos_u_clause_index, _ = self.clause_map[pos_u_clause]
+        neg_u_clause_index, _ = self.clause_map[neg_u_clause]
         clause_trace = []
         index_trace = []
         # Run bfs backtracking
@@ -95,8 +98,29 @@ class ClauseDatabase:
             c2_index, _ = self.clause_map[c2]
             c3_index, _ = self.clause_map[c3]
             index_trace.append((c1_index, c2_index, c3_index))
-        for c1_index, c2_index, c3_index in sorted(index_trace, key=lambda x: x[2]):
-            print("c1: {}, c2: {}, c3: {}".format(c1_index, c2_index, c3_index))
+        sorted_index_trace = sorted(index_trace, key=lambda x: x[2])
+        sorted_index_trace.append((pos_u_clause_index, neg_u_clause_index, -1)) # Resolution refutation.
+        return sorted_index_trace
+
+
+class ResolutionChecker:
+    def __init__(self, trace, clause_db):
+        self.trace = trace
+        self.clause_db = clause_db
+
+    def check(self):
+        index_map = self.clause_db.clause_index_map
+        correct = True
+        for c1_index, c2_index, c3_index in self.trace:
+            c1 = index_map[c1_index]
+            c2 = index_map[c2_index]
+            c3 = index_map[c3_index]
+            c3_resolved = Clause.resolve(c1, c2)
+            if c3 != c3_resolved:
+                correct = False
+                break
+            print("Resolving({}, {}) gives {}".format(c1, c2, c3))
+        return correct
 
 
 class ResolutionRefutationSolver:

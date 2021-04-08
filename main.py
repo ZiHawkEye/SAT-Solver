@@ -1,5 +1,5 @@
 from dimacs_parser import *
-from resolution_refutation import ResolutionRefutationSolver
+from resolution_refutation import ResolutionRefutationSolver, ResolutionChecker
 from config import Config
 import os, time
 
@@ -29,7 +29,9 @@ def main():
     if sat_result == ENUM.SAT:
         print("Assignment: {}".format(assignment))
     else:
-        solver.clause_db.get_resolution_refutation()
+        trace = solver.clause_db.get_resolution_refutation()
+        checker = ResolutionChecker(trace, solver.clause_db)
+        print(checker.check())
     print("Number of unit propagations: {}".format(solver.num_of_unit_prop_calls))
     print("Number of clauses added from CDCL: {}".format(len(solver.formula.clauses) - original_num_clauses))
     print("Trial times: {}".format(time_taken_list))

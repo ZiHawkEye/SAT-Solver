@@ -404,6 +404,10 @@ class Clause(object):
                 literals.add(literal)
         return Clause(literals)
 
+    @staticmethod
+    def empty_clause():
+        return Clause(set())
+
 
 class Literal(object):
     def __init__(self, dimacs_literal_format):

@@ -8,31 +8,24 @@ class Solver:
     def __init__(self, formula, n_vars, isLog=False):
         # a formula is a list of clauses
         # a clause is a set of variables
-        # a variable is represented by a integer. -variable represents the negation literal
+        # a variable is represented by an integer. -variable represents the negation literal
         self.assigned_lits = {0: []} # { decision_level: [ literal ] } - contains the list of literals in lifo assignment order
         self.unassigned = { i for i in range(1, n_vars + 1) } # { variable }
         self.assignments = {} # { variable: value }
-        self.antecedents = {} # { variable: clause_index }
+        self.antecedents = {} # { variable: clause }
         self.decision_levels = {} # { variable: decision_level }
-        self.clause_index_map = {} # { clause: clause_index }
-        # invariant: all watched literals have not been assigned yet, or they have been assigned value 1, or they are assigned 0.
-        self.literal_clause_watchlist = {} # { literals: [ clause_index ] } - range of literals is [-n: n], where n is the number of variables
-        self.clause_literal_watchlist = {} # { clause_index: [ literal ] }
-
-        for i in range(len(formula)):
-            clause = formula[i]
-            self.clause_index_map[clause] = i
-
-        for l in range(-n_vars, n_vars + 1):
-            self.literal_clause_watchlist[l] = []
-
-        for clause_index in range(len(formula)):
-            # adds 2 watched literals per clause
-            self.add_watched_literal(formula, clause_index)
-            self.add_watched_literal(formula, clause_index)
-
+        self.clause_literal_watchlist = {} # { clause: [ literal ] }
+        self.literal_clause_watchlist = {} # { literal: [ clause ] } - range of literals is [-n: n], where n is the number of variables
         self.decision_level = 0
-        self.logger = Logger(True)
+        self.logger = Logger(isLog)
+
+        # initializes watchlist
+        for i in range(-n_vars, n_vars + 1):
+            self.literal_clause_watchlist[i] = []
+            
+        for clause in formula:
+            self.add_watched_literal(clause)
+            self.add_watched_literal(clause)
 
     def cdcl(self, formula):
         """
@@ -44,7 +37,7 @@ class Solver:
             formula = self.unit_propagation(formula)
 
             if self.eval_formula(formula) == SAT:   
-                return self.assignments, self.eval_formula(formula)
+                return self.assignments, SAT
 
             if (self.eval_formula(formula) == UNSAT):
                 if self.decision_level == 0:
@@ -54,26 +47,26 @@ class Solver:
                 learnt_clause, stage, uip_literal = self.conflict_analysis(formula) 
                 uip_literal_value = self.eval_literal(uip_literal)
                 
-                # adds the learnt clause to the formula and adds 2 watched literals for the clause
-                formula += [learnt_clause]
-                self.clause_index_map[learnt_clause] = len(formula) - 1 # maps clause to clause index
-                self.add_watched_literal(formula, len(formula) - 1)
-                self.add_watched_literal(formula, len(formula) - 1)
-
                 # backtracks assignments 
                 self.backtrack(stage)
                 self.decision_level = stage
 
-                # adds uip variable assignment to new stage
-                self.assign_variable(formula, uip_literal, uip_literal_value, stage)
+                # adds the learnt clause and its watched literals to the formula after backtracking
+                formula += [learnt_clause]
+                self.add_watched_literal(learnt_clause)
+                self.add_watched_literal(learnt_clause)
 
+                # adds uip variable assignment to new stage
+                self.assign_variable(uip_literal, uip_literal_value, stage)
+
+                # unit propagation after assigning uip variable
                 continue
-            
+
             if (self.eval_formula(formula) == UNDECIDED):
                 # increments decision level after choosing a variable
                 variable, value = self.pick_branching_variable()
                 self.decision_level += 1 
-                self.assign_variable(formula, variable, value, self.decision_level)
+                self.assign_variable(variable, value, self.decision_level)
 
     def all_variables_assigned(self):
         return self.unassigned == set()
@@ -95,21 +88,20 @@ class Solver:
                 self.logger.log("conflict")
                 return formula
 
-            # gets the last assigned variable at the current decision level
-            # checks for unit clauses containing the variable
+            # claim: new unit clauses usually watch the last assigned variable
+            # except for clauses with 1 variable
             antecedent = None # antecedent is the unit clause where the implication rule is applied
+            
+            if (self.decision_level in self.assigned_lits
+                and self.assigned_lits[self.decision_level] != []):
+                last_assigned_lit = self.assigned_lits[self.decision_level][-1]
 
-            if (self.decision_level in self.assigned_lits and 
-                    self.assigned_lits[self.decision_level] != []):
-                last_assigned_var = self.assigned_lits[self.decision_level][-1]
                 # only checks clauses where the last assigned variable has value 0
-                literal = last_assigned_var
-
-                if self.eval_literal(literal) == 1:
-                    literal = -literal
+                literal = (last_assigned_lit 
+                        if self.eval_literal(last_assigned_lit) != 1 
+                        else -last_assigned_lit)
                 
-                for clause_index in self.literal_clause_watchlist[literal]:
-                    clause = formula[clause_index]
+                for clause in self.literal_clause_watchlist[literal]:
                     if self.eval_clause(clause) == UNIT:
                         unit_literal = self.get_unit_literal(clause)
                         antecedent = clause
@@ -128,7 +120,7 @@ class Solver:
                 break
 
             # if all other literals in the clause have value 0, then the last literals must have value 1
-            self.assign_variable(formula, unit_literal, 1, self.decision_level, antecedent)
+            self.assign_variable(unit_literal, 1, self.decision_level, antecedent)
 
         return formula
 
@@ -164,41 +156,38 @@ class Solver:
 
             if len(literals) == 1:
                 return literals.pop()
-                
-            return None
+            else:
+                return None
         
-        # searches clauses watching last assigned literal for unsat clause
+        # invariant: unsat clause watches last assigned variable
+        # resolution starts with the unsat clause
         last_assigned_literal = self.assigned_lits[self.decision_level][-1]
-        literal = last_assigned_literal if self.eval_literal(last_assigned_literal) == 0 else -last_assigned_literal
-        clause_indexes = self.literal_clause_watchlist[literal]
-        for clause_index in clause_indexes:
-            clause = formula[clause_index]
+        literal = (last_assigned_literal 
+                if self.eval_literal(last_assigned_literal) == 0 
+                else -last_assigned_literal)
+        
+        for clause in self.literal_clause_watchlist[literal]:
             if self.eval_clause(clause) == UNSAT:
                 learnt_clause = clause
                 break
 
-        try:
-            self.logger.log("unsat clause: " + str(learnt_clause))
-        except:
-            # searches the entire formula for the unsat clause
-            for i in range(len(formula)):
-                clause = formula[i]
-                if self.eval_clause(clause) == UNSAT:
-                    learnt_clause = clause
-                    print(learnt_clause)
-                    print(self.clause_literal_watchlist[i])
-                    exit()
+        self.logger.log("unsat clause: " + str(learnt_clause))
         
-        # resolves in a lifo order of assignment of literals
+        # performs resolution on learnt clause in a lifo order of assignment of literals
         for i in range(len(self.assigned_lits[self.decision_level]) - 1, -1, -1):
             # terminates at the first uip
             # guarantee: there is a uip at the first assignment of any stage
             uip_literal = get_uip(learnt_clause)
+
             if uip_literal != None:
                 break
 
             # finds target variable at the current decision level to use as pivot in resolution
             target_literal = self.assigned_lits[self.decision_level][i]
+
+            # edge case: target literal may not be in learnt clause
+            if -target_literal not in learnt_clause:
+                continue
 
             self.logger.log("resolved clause: {}, target literal: {}, antecedent: {}".format(
                     str(learnt_clause), str(target_literal), str(self.get_antecedent(target_literal))))
@@ -237,7 +226,7 @@ class Solver:
             # removes assigned vars in level
             self.assigned_lits[i] = []
 
-    def assign_variable(self, formula, literal, value, decision_level, antecedent=None):
+    def assign_variable(self, literal, value, decision_level, antecedent=None):
         variable = abs(literal)
         value = value if literal > 0 else 1 - value
         
@@ -259,7 +248,7 @@ class Solver:
         self.decision_levels[variable] = decision_level
 
         # updates clauses watching literal that has value 0
-        self.update_watched_literals(formula, variable)
+        self.update_watched_literals(literal)
         
     def unassign_variable(self, literal):
         variable = abs(literal)
@@ -288,11 +277,11 @@ class Solver:
     
     def eval_clause(self, clause):        
         # lazy implementation
-        # note: the eval can return UNDECIDED even when the clause is UNSAT
+        # note: the eval can return UNDECIDED even when the clause is SAT
         # because of the nature of lazy implementation but this is intended
         # since watched literals do not change when another literal is set to 1
-        clause_index = self.clause_index_map[clause]
-        watched_literals = self.clause_literal_watchlist[clause_index]
+        # invariant: if clause evals to UNIT/UNSAT, all unwatched literals in clause are assigned 0
+        watched_literals = self.clause_literal_watchlist[clause]
         a = watched_literals[0]
         b = watched_literals[-1]
 
@@ -302,15 +291,23 @@ class Solver:
             value = UNSAT
         # if only one literal is unassigned and the other == 0
         elif self.eval_literal(a) + self.eval_literal(b) == UNASSIGNED:
-            # print(str(a), str(b))
             value = UNIT
         # if clause contains only 1 literal
         elif self.eval_literal(a) == UNASSIGNED and self.eval_literal(b) == UNASSIGNED and a == b:
-            # print(str(a), str(b))
             value = UNIT
         else:
             value = UNDECIDED
         
+        # UNDO
+        if value == UNIT:
+            try:
+                assert(len([literal for literal in clause if self.eval_literal(literal) == UNDECIDED]) == 1)
+            except:
+                print(clause)
+                print(self.clause_literal_watchlist[clause])
+                print([self.eval_literal(literal) for literal in clause])
+                exit()
+                
         return value
 
     def eval_literal(self, literal):
@@ -329,8 +326,7 @@ class Solver:
         if self.eval_clause(clause) != UNIT:
             return None
         
-        clause_index = self.clause_index_map[clause]
-        watched_literals = self.clause_literal_watchlist[clause_index]
+        watched_literals = self.clause_literal_watchlist[clause]
         a = watched_literals[0]
         b = watched_literals[-1]
 
@@ -339,55 +335,51 @@ class Solver:
         else: 
             return b
 
-    def add_watched_literal(self, formula, clause_index):
+    def add_watched_literal(self, clause):
         # adds 1 new watched literal of value != 0 to the clause if found, else adds new literal of value == 0
-        clause = formula[clause_index]
+        if clause not in self.clause_literal_watchlist:
+            self.clause_literal_watchlist[clause] = []
 
-        if clause_index not in self.clause_literal_watchlist:
-            self.clause_literal_watchlist[clause_index] = []
-
-        if len(self.clause_literal_watchlist[clause_index]) == 2:
+        if len(self.clause_literal_watchlist[clause]) == 2:
             return
 
         for literal in clause:
-            if self.eval_literal(literal) == 1 and literal not in self.clause_literal_watchlist[clause_index]:
-                self.literal_clause_watchlist[literal].append(clause_index)
-                self.clause_literal_watchlist[clause_index].append(literal)
+            if self.eval_literal(literal) != 0 and literal not in self.clause_literal_watchlist[clause]:
+                self.literal_clause_watchlist[literal].append(clause)
+                self.clause_literal_watchlist[clause].append(literal)
                 return literal
-
+        
         for literal in clause:
-            if self.eval_literal(literal) == UNASSIGNED and literal not in self.clause_literal_watchlist[clause_index]:
-                self.literal_clause_watchlist[literal].append(clause_index)
-                self.clause_literal_watchlist[clause_index].append(literal)
+            if self.eval_literal(literal) == 0 and literal not in self.clause_literal_watchlist[clause]:
+                self.literal_clause_watchlist[literal].append(clause)
+                self.clause_literal_watchlist[clause].append(literal)                                  
                 return literal
 
-        for literal in clause:
-            if self.eval_literal(literal) == 0 and literal not in self.clause_literal_watchlist[clause_index]:
-                self.literal_clause_watchlist[literal].append(clause_index)
-                self.clause_literal_watchlist[clause_index].append(literal)
-                return literal
-
-    def update_watched_literals(self, formula, variable):
+    def update_watched_literals(self, literal):
         # literal has value 0
-        literal = variable if self.eval_literal(variable) == 0 else -variable
+        literal = literal if self.eval_literal(literal) == 0 else -literal
 
         # removes all clauses watching literal 
-        clause_indexes = self.literal_clause_watchlist[literal]
+        clauses = self.literal_clause_watchlist[literal]
+        
+        for clause in clauses:
+            self.clause_literal_watchlist[clause].remove(literal)
+
         self.literal_clause_watchlist[literal] = []
 
-        for clause_index in clause_indexes:
-            self.clause_literal_watchlist[clause_index].remove(literal)
-
         # adds new watched literal to above clauses
-        for clause_index in clause_indexes:
-            clause = formula[clause_index]
-            new_literal = self.add_watched_literal(formula, clause_index)
-            # print(clause)
-            
-            # if the clause is unit/unsat, should watch the same literal
-            if self.eval_clause(clause) == UNIT or self.eval_clause(clause) == UNSAT:
+        for clause in clauses:
+            new_literal = self.add_watched_literal(clause)
+
+            # if new reference is assigned 0, then restore initial reference
+            # avoids edge cases:
+            # initial status: UNSAT, status after backtracking: UNDECIDED, lazy eval status: UNIT/UNSAT
+            # this occurs because unwatched literals are unassigned before watched literals
+            # keeping the invariant: if watched literals eval to UNIT/UNSAT, all other literals in clause are 0
+            if self.eval_literal(new_literal) == 0:
+                # removes new reference
                 self.literal_clause_watchlist[new_literal].pop()
-                self.clause_literal_watchlist[clause_index].pop()
-                self.literal_clause_watchlist[literal].append(clause_index)
-                self.clause_literal_watchlist[clause_index].append(literal)
-                
+                self.clause_literal_watchlist[clause].pop()
+                # restores initial reference
+                self.literal_clause_watchlist[literal].append(clause)
+                self.clause_literal_watchlist[clause].append(literal)

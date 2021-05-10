@@ -2,6 +2,7 @@ from dimacs_parser import *
 from solver import *
 import os
 import copy
+import time
 
 sat_path =r'./sat_cases'
 unsat_path =r'./unsat_cases'
@@ -13,7 +14,7 @@ def main():
     print("\n".join(sat_paths))    
     print("\n".join(unsat_paths))
 
-    path = sat_paths[6]
+    path = sat_paths[9]
     
     with open(os.path.join(os.getcwd(), path)) as f:
         test_case = f.read()
@@ -26,9 +27,11 @@ def main():
     formula, n_vars = dimacs_parse(test_case)
     print("formula: " + str(formula))
 
-    solver = Solver(formula, n_vars)
+    start_time = time.time()
+    solver = Solver(formula, n_vars, isLog=True)
 
     print(solver.cdcl(formula))
+    print("time taken: " + str(time.time() - start_time))
 
 if __name__ == "__main__":
     main()

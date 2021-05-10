@@ -33,5 +33,4 @@ for path in unsat_paths:
     assert value == UNSAT
     print("{} passed in {}s".format(path, str(end_time - start_time)))
 
-if __name__ == "__main__":
-    main()
+print("All test cases passed")

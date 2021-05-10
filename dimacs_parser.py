@@ -64,7 +64,7 @@ def parse_cnf(lines, start):
     return (n_vars, n_clauses)
 
 def parse_formula(lines, n_vars, n_clauses, start):
-    formula = []
+    formula = set()
 
     for i in range(start, start + n_clauses):
         tokens = lines[i].strip().split()
@@ -84,6 +84,6 @@ def parse_formula(lines, n_vars, n_clauses, start):
         except ValueError as e:
             print("Error, variable should be a nonzero number.")
             
-        formula.append(frozenset(clause))
+        formula.add(frozenset(clause))
 
     return formula

@@ -4,7 +4,7 @@ import os
 import copy
 import time
 
-sat_path =r'./sat_cases'
+sat_path =r'./UF150.645.100'
 unsat_path =r'./unsat_cases'
 hard_path =r'./hard_cases'
 
@@ -22,8 +22,9 @@ def main():
     print("\n".join(unsat_paths))
     print("\n".join(hard_paths))
 
-    path = hard_paths[0]
-    
+    # path = unsat_paths[0]
+    path = sat_paths[2]
+
     with open(os.path.join(os.getcwd(), path)) as f:
         test_case = f.read()
 
@@ -33,7 +34,7 @@ def main():
     start_time = time.time()
     solver = Solver(formula, n_vars, isLog=True)
 
-    print(solver.cdcl(formula))
+    print(solver.solve())
     print("time taken: " + str(time.time() - start_time))
 
 if __name__ == "__main__":

@@ -7,31 +7,61 @@ import copy
 
 class Solver:
     def __init__(self, formula, n_vars, isLog=False):
-        # a formula is a list of clauses
+        """
+        Initializes solver. 
+            :param formula: SAT formula.
+            :param n_vars: Number of variables in formula.
+            :param isLog: Switch variable that logs activity if True and not otherwise.
+        """
+        # a formula is a set of clauses
         # a clause is a set of variables
-        # a variable is represented by an integer. -variable represents the negation literal
+        # a variable is represented by an integer. -variable denotes the negation literal
         # range of literals is [-n: n], where n is the number of variables
 
         self.formula = copy.deepcopy(formula)
-        self.trail = {0: []} # { decision_level: [ literal ] } - contains the list of literals at a decision level in lifo assignment order
-        self.unassigned = { i for i in range(1, n_vars + 1) } # { variable }
+        self.trail = {0: []} # { decision_level: [ literal ] } - contains the list of literals each decision level in lifo assignment order
+        self.unassigned = [ i for i in range(1, n_vars + 1) ] # { variable }
         self.assignments = {} # { variable: value }
         self.antecedents = {} # { variable: clause }
         self.decision_levels = {} # { variable: decision_level }
-        # invariant: if watched literals eval to UNIT/UNSAT, all other literals in clause are 0
-        # this means that the last 2 assigned literals of a UNIT/UNSAT clause are always watched
-        self.clause_literal_watchlist = {} # { clause: [ literal ] }
-        self.literal_clause_watchlist = {} # { literal: [ clause ] } 
         self.decision_level = 0
         self.logger = Logger(isLog)
-
+        
+        # the watched literals heuristic has each clause watching 2 literals, maintaining the following invariant:
+        # if watched literals eval to UNIT/UNSAT, all other literals in clause are 0
+        # this means that the last 2 assigned literals of a UNIT/UNSAT clause are always watched
+        # this speeds up finding unit clauses for propagation and unsat clause for conflict analysis
+        self.clause_literal_watchlist = {} # { clause: [ literal ] }
+        self.literal_clause_watchlist = {} # { literal: [ clause ] } 
+        
         # initializes watchlist
-        for i in range(-n_vars, n_vars + 1):
-            self.literal_clause_watchlist[i] = []
+        for literal in range(-n_vars, n_vars + 1):
+            self.literal_clause_watchlist[literal] = []
             
+        # each clause watches 2 literals
         for clause in formula:
             self.add_watched_literal(clause)
             self.add_watched_literal(clause)
+        
+        # vsids heuristic dynamically tracks the number of times a variable appears in a formula
+        # an unassigned variable with the highest number of appearances is chosen and 
+        # assigned a value at the start of each decision level
+        # the count for each variable decays after a set interval
+        # initializes vsids counter
+        self.vsids_counter = {} # { literal: count }
+        self.countdown_max_time = 100
+        self.countdown = self.countdown_max_time
+
+        # NOTE: implements a variable counter but the ZChaff paper mentions a literal counter of each polarity
+        for variable in range(1, n_vars + 1):
+            self.vsids_counter[variable] = 0
+
+        for clause in formula:
+            for literal in clause:
+                self.vsids_counter[abs(variable)] += 1
+
+    def solve(self):
+        return self.cdcl(copy.deepcopy(self.formula))
 
     def cdcl(self, formula):
         """
@@ -49,17 +79,14 @@ class Solver:
                 if self.decision_level == 0:
                     return {}, UNSAT
 
-                # conflict analysis to learn new clause and level to backtrack to  
                 learnt_clause, stage = self.conflict_analysis(formula) 
                 
-                # backtracks assignments 
                 self.backtrack(stage)
                 self.decision_level = stage
 
-                # adds the learnt clause and its watched literals to the formula after backtracking
+                # adds the learnt clause to the formula after backtracking
                 formula.add(learnt_clause)
-                self.add_watched_literal(learnt_clause)
-                self.add_watched_literal(learnt_clause)
+                self.initialize_learnt_clause(learnt_clause)
 
                 # continue with unit propagation
                 continue
@@ -71,8 +98,9 @@ class Solver:
                 self.assign_variable(variable, value, self.decision_level)
 
     def pick_branching_variable(self):
-        variable = self.unassigned.pop()
-        self.unassigned.add(variable)
+        # uses vsids heuristic - takes the variable with the highest count
+        self.unassigned.sort(key=lambda variable: self.vsids_counter[variable])
+        variable = self.unassigned[-1]
         return variable, 0
 
     def unit_propagation(self, formula):
@@ -82,13 +110,12 @@ class Solver:
             :returns: Modified SAT formula after applying unit clause rule.
         """        
         while True:
-            # terminates if there is a conflict
             if self.eval_formula(formula) == UNSAT:
                 self.logger.log("conflict")
                 return formula
 
             # claim: new unit clauses usually watch the last assigned literal
-            # except for clauses with 1 literal
+            # not necessarily true for clauses with 1 literal
             antecedent = None # antecedent is the unit clause where the implication rule is applied
             
             if (self.decision_level in self.trail
@@ -118,18 +145,39 @@ class Solver:
             if antecedent == None:
                 break
 
-            # if all other literals in the clause have value 0, then the last literals must have value 1
+            # unit implication rule: if all other literals in the clause have value 0, then the last literal must have value 1
             self.assign_variable(unit_literal, 1, self.decision_level, antecedent)
 
         return formula
 
     def resolution(self, clause1, clause2, pivot):
-        # pivot - literal in clause1 whose negation is in clause2
-        # resolved clause contains all literals in both clauses except pivot and its negation
+        """
+        Performs resolution on 2 clauses with a given pivot
+            :param clause1: Clause containing pivot.
+            :param clause2: Clause containing negation of pivot.
+            :param pivot: Literal in clause1 whose negation is in clause2.
+            :returns: Resolved clause containing all literals in both clauses except pivot and its negation.
+        """
         resolved_clause = { literal for literal in clause1 if literal != pivot }
         resolved_clause |= { literal for literal in clause2 if literal != -pivot }
 
         return resolved_clause
+
+    def get_uip(self, learnt_clause):
+        """
+        Gets the UIP of the learnt clause if it exists.
+        There is a unique implication point if the learnt clause only has 1 variable at the current decision level.
+            :param learnt_clause: Target clause.
+            :returns: Returns the uip variable if found, else returns None.
+        """
+        literals = [ literal 
+                for literal in learnt_clause 
+                if self.get_decision_level(literal) == self.decision_level ]
+
+        if len(literals) == 1:
+            return literals.pop()
+        else:
+            return None
 
     def conflict_analysis(self, formula):
         """
@@ -138,21 +186,11 @@ class Solver:
             :param formula: SAT formula.
             :returns: New formula with learnt clause - resolved clauses, stage to backtrack to.
         """
-        # there is a unique implication point if the learnt clause only has 1 variable at the current decision level
-        # returns the uip variable if found, else returns None
-        def get_uip(learnt_clause):
-            literals = { literal 
-                    for literal in learnt_clause 
-                    if self.get_decision_level(literal) == self.decision_level }
-
-            if len(literals) == 1:
-                return literals.pop()
-            else:
-                return None
-        
         # invariant: unsat clause watches last assigned literal
-        # resolution starts with the unsat clause
+        # conflict analysis starts with the unsat clause
         last_assigned_literal = self.trail[self.decision_level][-1]
+
+        # only checks clauses where the last assigned literal has value 0
         literal = (last_assigned_literal 
                 if self.eval_literal(last_assigned_literal) == 0 
                 else -last_assigned_literal)
@@ -168,58 +206,58 @@ class Solver:
         for i in range(len(self.trail[self.decision_level]) - 1, -1, -1):
             # terminates at the first uip
             # guarantee: there is a uip at the first assignment of any decision level
-            uip_literal = get_uip(learnt_clause)
+            uip_literal = self.get_uip(learnt_clause)
 
             if uip_literal != None:
                 break
 
-            # finds target variable at the current decision level to use as pivot in resolution
-            target_literal = self.trail[self.decision_level][i]
+            # finds target literal at the current decision level to use as pivot in resolution
+            pivot = self.trail[self.decision_level][i]
 
-            # edge case: target literal's negation may not be in learnt clause - skips over the variable
-            if -target_literal not in learnt_clause:
+            # edge case: pivot's negation may not be in learnt clause - skips over the variable
+            if -pivot not in learnt_clause:
                 continue
 
             self.logger.log("resolved clause: {}, target literal: {}, antecedent: {}".format(
                     str(learnt_clause), 
-                    str(target_literal), 
-                    str(self.get_antecedent(target_literal))))
+                    str(pivot), 
+                    str(self.get_antecedent(pivot))))
             
-            learnt_clause = self.resolution(self.get_antecedent(target_literal), learnt_clause, target_literal)
+            learnt_clause = self.resolution(self.get_antecedent(pivot), learnt_clause, pivot)
            
         # backtracks to highest decision level other than the uip literal
         # if clause only contains uip literal, will return 0
-        # this ensures learnt clause is always unit
+        # this ensures learnt clause is always unit after backtracking
         stage = max({ self.get_decision_level(literal) 
                 for literal in learnt_clause 
                 if literal != uip_literal }, 
                 default=0)
 
-        self.logger.log("learnt clause: {}, stage: {}, uip literal: {}".format(str(learnt_clause), str(stage), str(uip_literal)))
+        self.logger.log("learnt clause: {}, stage: {}, uip literal: {}".format(
+                str(learnt_clause), 
+                str(stage), 
+                str(uip_literal)))
+
         return frozenset(learnt_clause), stage
 
     def backtrack(self, stage):
         """
-        Backtracks assignments to the chosen decision level.
+        Undoes assignments made after the chosen decision level.
             :param stage: Chosen decision level.
             :returns: Restored formula at the given decision level.
         """
         self.logger.log("backtracking to level " + str(stage))
 
         # removes assignments from all decision levels after stage
-        for i in range(stage + 1, self.decision_level + 1):
-            # adds to unassigned variables
-            if i in self.trail:
-                variables = { abs(literal) for literal in self.trail[i] }
-                self.unassigned |= variables
+        for level in range(stage + 1, self.decision_level + 1):
+            if level in self.trail:
+                variables = [ abs(literal) for literal in self.trail[level] ]
             
-            # sets all assigned variables in decision level to unassigned
-            for literal in self.trail[i]:
+            for literal in self.trail[level]:
                 variable = abs(literal)
                 self.unassign_variable(variable)
 
-            # removes assigned vars in level
-            self.trail[i] = []
+            self.trail[level] = []
 
     def assign_variable(self, literal, value, decision_level, antecedent=None):
         variable = abs(literal)
@@ -237,7 +275,7 @@ class Solver:
 
         # removes from unassigned
         self.unassigned.remove(variable)
-
+        
         # sets value of variable, antecedent, decision_level
         self.assignments[variable] = value
         self.antecedents[variable] = antecedent
@@ -251,6 +289,7 @@ class Solver:
         self.assignments[variable] = UNASSIGNED
         self.antecedents[variable] = None
         self.decision_levels[variable] = None
+        self.unassigned.append(variable)
 
     def get_decision_level(self, literal):
         variable = abs(literal)
@@ -273,7 +312,7 @@ class Solver:
     
     def eval_clause(self, clause):        
         # lazy implementation
-        # note: the eval can return UNDECIDED even when the clause is SAT
+        # NOTE: the eval can return UNDECIDED even when the clause is SAT
         # because of the nature of lazy implementation but this is intended
         # since watched literals do not change when another literal is set to 1
         # invariant: if clause evals to UNIT/UNSAT, all unwatched literals in clause are assigned 0
@@ -324,8 +363,11 @@ class Solver:
             return b
 
     def add_watched_literal(self, clause):
-        # adds 1 new watched literal of value != 0 to the clause if found, else adds new literal of value == 0
-        # returns new watched literal
+        """
+        Adds 1 new watched literal of value != 0 to the clause if found, else adds new literal of value == 0
+            :param clause: Clause to add watched literal to.
+            :returns: New watched literal.
+        """
         if clause not in self.clause_literal_watchlist:
             self.clause_literal_watchlist[clause] = []
 
@@ -341,7 +383,7 @@ class Solver:
         
         # if watched literal = 0, ensures it has the highest decision level in the clause among literals = 0
         # this ensures unwatched literals are not unassigned before watched literals during backtracking
-        # keeps watched literals invariant for learnt clauses
+        # thereby keeping watched literals invariant for learnt clauses
         highest = None
         chosen_literal = None
 
@@ -357,10 +399,13 @@ class Solver:
         return literal
 
     def update_watched_literals(self, literal):
-        # literal has value 0
+        """
+        Called when a literal is assigned. Updates watched literals in clauses where the literal's value is 0.
+            :param literal: Literal that has been assigned.
+            :returns: None.
+        """
+        # removes all clauses watching literal where literal = 0
         literal = literal if self.eval_literal(literal) == 0 else -literal
-
-        # removes all clauses watching literal 
         clauses = self.literal_clause_watchlist[literal]
         
         for clause in clauses:
@@ -373,7 +418,7 @@ class Solver:
             new_literal = self.add_watched_literal(clause)
 
             # if new reference is assigned 0, then restore initial reference
-            # avoids edge cases: initial status: UNSAT, status after backtracking: UNDECIDED, lazy eval status: UNIT/UNSAT
+            # avoids edge case: initial status: UNSAT, status after backtracking: UNDECIDED, lazy eval status: UNIT/UNSAT
             # this occurs because unwatched literals are unassigned before watched literals during backtracking
             # keeps the invariants: 
             # 1. if watched literals eval to UNIT/UNSAT, all other literals in clause are 0
@@ -385,3 +430,19 @@ class Solver:
                 # restores initial reference
                 self.literal_clause_watchlist[literal].append(clause)
                 self.clause_literal_watchlist[clause].append(literal)
+
+    def initialize_learnt_clause(self, learnt_clause):
+        # adds watched literals for learnt clause and keeps watched literals invariant
+        self.add_watched_literal(learnt_clause)
+        self.add_watched_literal(learnt_clause)
+
+        # increments vsids counter for all variables in clause
+        for literal in learnt_clause:
+            self.vsids_counter[abs(literal)] += 1
+
+        # periodically, all counts are right binary shifted as per vsids heuristic
+        self.countdown -= 1
+        if self.countdown == 0:
+            self.countdown = self.countdown_max_time
+            for variable in self.vsids_counter.keys():
+                self.vsids_counter[variable] = self.vsids_counter[variable] >> 1

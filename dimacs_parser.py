@@ -4,10 +4,10 @@ Helper functions for parsing DIMACS CNF file.
 from constants import *
 from exceptions import *
 
-def dimacs_parse(input):
+def dimacs_parse(dimacs):
     """
     Reads a DIMACS CNF file, returns clauses.
-        :param input: string input
+        :param dimacs: string input
         :raises FileFormatError: when file format is wrong
         :returns: clauses
     """
@@ -23,9 +23,9 @@ def dimacs_parse(input):
             "1 -3 0 \n" + 
             "2 3 -1 0 \n")
 
-    lines = input.strip().split("\n")
+    lines = dimacs.strip().split("\n")
 
-    if not (len(input) >= 2): 
+    if not (len(dimacs) >= 2): 
         raise FileFormatError(parse_error_msg)
 
     comments, start = parse_comment(lines)
@@ -78,8 +78,8 @@ def parse_formula(lines, n_vars, n_clauses, start):
             clause = set()
 
             for token in tokens:                
-                variable = int(token)
-                clause.add(variable) # variable is an integer, with a negative integer denoting a negation of the variable
+                literal = int(token)
+                clause.add(literal) # variable is an integer, with a negative integer denoting a negation of the literal
 
         except ValueError as e:
             print("Error, variable should be a nonzero number.")

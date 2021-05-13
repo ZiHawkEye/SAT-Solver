@@ -6,41 +6,41 @@ import os
 from dimacs_parser import *
 from solver import *
 import time
+import glob
 
-sat_path =r'./uf50-218'
-unsat_path =r'./UUF50.218.1000'
+sat_paths = glob.glob(r'./sat_cases' + '/**/*.cnf', recursive=True)
+unsat_paths = glob.glob(r'./unsat_cases' + '/**/*.cnf', recursive=True)
 
-sat_paths = os.listdir(sat_path)
-unsat_paths = os.listdir(unsat_path)
+if True:
+    for sat_path in sat_paths:
+        with open(sat_path) as f:
+            test_case = f.read()
 
-for path in sat_paths:
-    with open(os.path.join(sat_path, path)) as f:
-        test_case = f.read()
+        formula, n_vars = dimacs_parse(test_case)
+        solver = Solver(formula, n_vars)
 
-    formula, n_vars = dimacs_parse(test_case)
-    solver = Solver(formula, n_vars)
+        start_time = time.time()
+        assignments, value = solver.solve()
+        end_time = time.time()
 
-    start_time = time.time()
-    assignments, value = solver.solve()
-    end_time = time.time()
+        assert value == SAT
 
-    assert value == SAT
+        print("{} passed in {}s".format(sat_path, str(end_time - start_time)))
 
-    print("{} passed in {}s".format(path, str(end_time - start_time)))
+if True:
+    for unsat_path in unsat_paths:
+        with open(unsat_path) as f:
+            test_case = f.read()
 
-for path in unsat_paths:
-    with open(os.path.join(unsat_path, path)) as f:
-        test_case = f.read()
+        formula, n_vars = dimacs_parse(test_case)
+        solver = Solver(formula, n_vars)
 
-    formula, n_vars = dimacs_parse(test_case)
-    solver = Solver(formula, n_vars)
+        start_time = time.time()
+        assignments, value = solver.solve()
+        end_time = time.time()
 
-    start_time = time.time()
-    assignments, value = solver.solve()
-    end_time = time.time()
+        assert value == UNSAT
 
-    assert value == UNSAT
-
-    print("{} passed in {}s".format(path, str(end_time - start_time)))
+        print("{} passed in {}s".format(unsat_path, str(end_time - start_time)))
 
 print("All test cases passed")

@@ -19,7 +19,7 @@ def main():
 
     # path = unsat_paths[2]
     # path = sat_paths[4]
-    path = r'unsat_cases/pigeon-hole/hole8.cnf'
+    path = r'unsat_cases/pigeon-hole/hole7.cnf'
 
     with open(os.path.join(os.getcwd(), path)) as f:
         test_case = f.read()

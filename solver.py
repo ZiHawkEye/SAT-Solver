@@ -167,32 +167,22 @@ class Solver:
 
         self.propagation_queue = clauses + self.propagation_queue
 
-        while True:
+        # checks the propagation queue for unit literals
+        while self.propagation_queue != []:
             if self.eval_formula(formula) == UNSAT:
                 self.logger.log("conflict")
                 return
 
-            unit_literal = None
-            antecedent = None # antecedent is the unit clause where the implication rule is applied
-
-            # checks the propagation queue for unit literals
-            while self.propagation_queue != []:
-                unit_literal, antecedent = self.propagation_queue.pop(0)
-                
-                if self.eval_clause(antecedent) == UNIT:
-                    break
-                else:
-                    # clauses in the propagation queue might not be unit
-                    # due to backtracking or other clauses being visited first
-                    unit_literal = None
-                    antecedent = None
-
-            # terminates if there are no more unit clauses
-            if antecedent == None:
-                return
-
-            # unit implication rule: if all other literals in the clause have value 0, then the last literal must have value 1
-            self.assign_variable(unit_literal, 1, self.decision_level, antecedent)
+            unit_literal, antecedent = self.propagation_queue.pop(0)
+            
+            if self.eval_clause(antecedent) == UNIT:
+                # unit implication rule: if all other literals in the clause have value 0, then the last literal must have value 1
+                self.assign_variable(unit_literal, 1, self.decision_level, antecedent)
+            else:
+                # clauses in the propagation queue might not be unit
+                # due to backtracking or other clauses being visited first
+                unit_literal = None
+                antecedent = None
 
     def update_propagation_queue(self, assigned_literal):
         # updates propagation queue after every assignment

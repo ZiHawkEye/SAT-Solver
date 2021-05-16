@@ -8,8 +8,10 @@ from solver import *
 import time
 import glob
 
-sat_paths = glob.glob(r'./sat_cases' + '/**/*.cnf', recursive=True)
-unsat_paths = glob.glob(r'./unsat_cases' + '/**/*.cnf', recursive=True)
+# sat_paths = glob.glob(r'./sat_cases/uf50-218' + '/**/*.cnf', recursive=True)
+# unsat_paths = glob.glob(r'./unsat_cases/UUF50.218.1000' + '/**/*.cnf', recursive=True)
+sat_paths = glob.glob(r'./sat_cases/' + '/**/*.cnf', recursive=True)
+unsat_paths = glob.glob(r'./unsat_cases/' + '/**/*.cnf', recursive=True)
 
 if True:
     for sat_path in sat_paths:

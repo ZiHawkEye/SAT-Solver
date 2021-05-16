@@ -29,7 +29,14 @@ class Solver:
         self.decision_level = 0
         self.logger = Logger(Config.IS_LOG)
 
+        # tracks all single literal clauses
+        self.single_literal_clauses = set() # {} clause }
+        for clause in self.formula:
+            if len(clause) == 1:
+                self.single_literal_clauses.add(clause)
+
         # recommended by MiniSat - keeps a queue of unit literals
+        # invariant: contains all unit literals, clauses thus far
         self.propagation_queue = [] # [ ( literal, antecedent ) ]
         
         # the watched literals heuristic has each clause watching 2 literals, maintaining the following invariant:
@@ -153,11 +160,19 @@ class Solver:
             :param formula: SAT formula.
             :returns: None.
         """        
+        # adds single literal clauses to propagation queue
+        clauses = [(self.get_unit_literal(clause), clause) 
+                for clause in self.single_literal_clauses
+                if self.eval_clause(clause) == UNIT]
+
+        self.propagation_queue = clauses + self.propagation_queue
+
         while True:
             if self.eval_formula(formula) == UNSAT:
                 self.logger.log("conflict")
-                return formula
+                return
 
+            unit_literal = None
             antecedent = None # antecedent is the unit clause where the implication rule is applied
 
             # checks the propagation queue for unit literals
@@ -172,38 +187,29 @@ class Solver:
                     unit_literal = None
                     antecedent = None
 
-            # claim: new unit clauses usually watch the last assigned literal
-            # not necessarily true for clauses with 1 literal
-            # adds all unit literals and clauses to propagation queue
-            if (antecedent == None 
-                    and self.trail[self.decision_level] != []):
-                last_assigned_literal = self.trail[self.decision_level][-1]
-
-                # only checks clauses where the last assigned literal has value 0
-                literal = (last_assigned_literal
-                        if self.eval_literal(last_assigned_literal) != 1 
-                        else -last_assigned_literal)
-                
-                for clause in self.literal_clause_watchlist[literal]:
-                    if self.eval_clause(clause) == UNIT:
-                        unit_literal = self.get_unit_literal(clause)
-                        antecedent = clause
-                        self.propagation_queue.append((unit_literal, antecedent))
-            
-            # otherwise search for unit clause in the entire formula
-            if antecedent == None:
-                for clause in formula:
-                    if self.eval_clause(clause) == UNIT:
-                        unit_literal = self.get_unit_literal(clause)
-                        antecedent = clause
-                        break
-
             # terminates if there are no more unit clauses
             if antecedent == None:
-                break
+                return
 
             # unit implication rule: if all other literals in the clause have value 0, then the last literal must have value 1
             self.assign_variable(unit_literal, 1, self.decision_level, antecedent)
+
+    def update_propagation_queue(self, assigned_literal):
+        # updates propagation queue after every assignment
+        # claim: new unit clauses watch the last assigned literal
+        # adds all new unit literals and clauses to propagation queue
+        last_assigned_literal = assigned_literal
+
+        # only checks clauses where the last assigned literal has value 0
+        literal = (last_assigned_literal
+                if self.eval_literal(last_assigned_literal) == 0 
+                else -last_assigned_literal)
+        
+        for clause in self.literal_clause_watchlist[literal]:
+            if self.eval_clause(clause) == UNIT:
+                unit_literal = self.get_unit_literal(clause)
+                antecedent = clause
+                self.propagation_queue.append((unit_literal, antecedent))
 
     def resolution(self, clause1, clause2, pivot):
         """
@@ -325,6 +331,9 @@ class Solver:
 
         # updates clauses watching literal of value 0
         self.update_watched_literals(literal)
+
+        # updates propagation queue after every assignment
+        self.update_propagation_queue(literal)
         
     def unassign_variable(self, literal):
         variable = abs(literal)
@@ -465,6 +474,10 @@ class Solver:
         # adds watched literals for learnt clause and keeps watched literals invariant
         self.add_watched_literal(learnt_clause)
         self.add_watched_literal(learnt_clause)
+
+        # if the clause contains only 1 literal, add to single literal clause set
+        if len(learnt_clause) == 1:
+            self.single_literal_clauses.add(learnt_clause)
 
         if self.is_vsids:
             # increments vsids counter for all variables in clause

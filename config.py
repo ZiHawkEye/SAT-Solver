@@ -2,7 +2,7 @@
 Contains settings for SAT solver.
 """
 class Config:
-    IS_LOG = False
+    IS_LOG = True
 
     IS_VSIDS = True
     VSIDS_INTERVAL = 256

@@ -341,7 +341,27 @@ class Solver:
         return self.antecedents[variable] 
           
     def eval_formula(self, formula):
-        return min({ self.eval_clause(clause) for clause in formula }, default=1) # only possible due to total order on assignments
+        # lazy implementation
+        # invariant: unsat clause always watches last assigned variable
+        if self.decision_level in self.trail and self.trail[self.decision_level] != []:
+            last_assigned_literal = self.trail[self.decision_level][-1]
+
+            # only checks clauses where the last assigned literal has value 0
+            literal = (last_assigned_literal 
+                    if self.eval_literal(last_assigned_literal) == 0 
+                    else -last_assigned_literal)
+            
+            for clause in self.literal_clause_watchlist[literal]:
+                if self.eval_clause(clause) == UNSAT:
+                    return UNSAT
+            
+        for clause in formula:
+            value = self.eval_clause(clause)
+
+            if value == UNIT or value == UNDECIDED:
+                return UNDECIDED
+        
+        return SAT
     
     def eval_clause(self, clause):        
         # lazy implementation
